@@ -74,6 +74,7 @@ create table public.payments (
   method        text,
   note          text,
   recorded_by   uuid references public.profiles(id),
+  operation_id  uuid,                                -- client op ID per logical payment; duplicate sync deliveries collapse at the unique backstop below (NULLs never collide)
   created_at    timestamptz not null default now()
 );
 
