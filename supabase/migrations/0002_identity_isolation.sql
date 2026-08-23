@@ -80,6 +80,15 @@ language sql stable security definer set search_path = public as $$
 $$;
 
 -- ---------------------------------------------------------------------------
+-- Grants — RLS filters rows, but the role still needs table privileges for
+-- policies to be evaluated at all (local stack grants no table defaults).
+-- ---------------------------------------------------------------------------
+grant usage on schema public to authenticated;
+grant select, update on public.profiles to authenticated;
+grant select, insert, update on public.businesses to authenticated;
+grant select, insert, update, delete on public.business_members to authenticated;
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security — ENABLE + FORCE on every table (owner included)
 -- Every policy declares TO authenticated; anon matches no tenant policy.
 -- auth.uid() wrapped as (select auth.uid()) for one-shot InitPlan evaluation.
