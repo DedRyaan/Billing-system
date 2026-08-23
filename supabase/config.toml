@@ -160,7 +160,11 @@ enable_refresh_token_rotation = true
 # Requires enable_refresh_token_rotation = true.
 refresh_token_reuse_interval = 10
 # Allow/disallow new user signups to your project.
-enable_signup = true
+# D-02: signup is CLOSED — accounts are born exclusively via the
+# bootstrap-super-admin Edge Function and admin invitations. Cloud-project
+# equivalent ("Disable new user signups" toggle / external_email_enabled
+#=false) gets its live re-verification in Plan 10 Task 2 (assumption A5).
+enable_signup = false
 # Allow/disallow anonymous sign-ins to your project.
 enable_anonymous_sign_ins = false
 # Allow/disallow testing manual linking of accounts
@@ -195,7 +199,8 @@ web3 = 30
 
 [auth.email]
 # Allow/disallow new user signups via email to your project.
-enable_signup = true
+# D-02 companion toggle to [auth] enable_signup=false — see note above (A5).
+enable_signup = false
 # If enabled, a user will be required to confirm any email change on both the old, and new email
 # addresses. If disabled, only the new email is required to confirm.
 double_confirm_changes = true

@@ -128,3 +128,49 @@ revoke execute on function public.rotate_setup_code_digest(text)
   from anon;
 grant execute on function public.rotate_setup_code_digest(text)
   to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- seed_setup_code_digest — D-01 first-run write path for the bootstrap Edge
+-- Function. The table carries NO application-role grants (API-invisible), so
+-- the service-role function needs this dedicated definer seeder to store the
+-- owner-chosen code's digest the first time bootstrap completes.
+--
+-- INSERT-ONLY-WHEN-ABSENT semantics: ON CONFLICT DO NOTHING means an existing
+-- digest can NEVER be replaced here — every later change of the code MUST go
+-- through rotate_setup_code_digest() where D-13's super_admin authorization
+-- lives. Returns true when this call performed the seed, false when the code
+-- was already seeded.
+--
+-- EXECUTE hygiene mirrors get_setup_code_digest(): service_role exclusively.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.seed_setup_code_digest(p_new_code text)
+returns boolean
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_new_code is null or length(p_new_code) < 12 then
+    raise exception 'seed_setup_code_digest requires a setup code of at least 12 characters';
+  end if;
+
+  insert into public.setup_code (id, code_hash)
+  values (1, digest(p_new_code, 'sha256'))
+  on conflict (id) do nothing;
+
+  perform public.write_audit('setup_code.seeded', 'setup_code', '1',
+                             null, null,
+                             jsonb_build_object('first_run_seed', true));
+  return found;
+end;
+$$;
+
+revoke execute on function public.seed_setup_code_digest(text)
+  from public;
+revoke execute on function public.seed_setup_code_digest(text)
+  from anon;
+revoke execute on function public.seed_setup_code_digest(text)
+  from authenticated;
+grant execute on function public.seed_setup_code_digest(text)
+  to service_role;
