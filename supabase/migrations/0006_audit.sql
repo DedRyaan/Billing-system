@@ -209,3 +209,120 @@ revoke execute on function public.health_check()
   from public;
 grant execute on function public.health_check()
   to anon, authenticated, service_role;
+
+-- ---------------------------------------------------------------------------
+-- audit_row_change() — generic capture trigger (RESEARCH Pattern 5 writer
+-- wiring, to_jsonb(OLD)/to_jsonb(NEW) per postgresql.org Example 41.4 style).
+--
+-- SECURITY DEFINER so the write_audit() call inside runs with owner scope:
+-- clients hold no EXECUTE on the writer by design (anti-forgery), and the
+-- definer context is what lets EVERY role's ordinary business writes append
+-- audit rows without granting anything extra. auth.uid() still resolves the
+-- caller's JWT claims here, so attribution is the real acting user.
+--
+-- Action names are dot-namespaced table.op — invoices.update,
+-- profiles.update, payments.insert ... (lower(TG_OP) normalizes I/U/D).
+-- target_id takes NEW/OLD id as text; composite-key tables (business_members)
+-- carry NULL there and rely on before/after payloads.
+-- business_id is derived from NEW then OLD when the column exists, else NULL
+-- (profiles/businesses themselves have no business_id column).
+-- Payloads are captured WHOLE — nothing stripped at this stage; redaction of
+-- sensitive keys can tighten later additively (jsonb '- key' in one place).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.audit_row_change() returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_old         jsonb;
+  v_new         jsonb;
+  v_business_id uuid;
+begin
+  if tg_op in ('INSERT', 'UPDATE') then
+    v_new := to_jsonb(new);
+  end if;
+  if tg_op in ('UPDATE', 'DELETE') then
+    v_old := to_jsonb(old);
+  end if;
+
+  v_business_id := coalesce(
+    v_new ->> 'business_id',
+    v_old ->> 'business_id'
+  );
+
+  perform public.write_audit(
+    tg_table_name || '.' || lower(tg_op),
+    tg_table_name,
+    coalesce(v_new ->> 'id', v_old ->> 'id'),
+    case when v_business_id is null then null else v_business_id::uuid end,
+    v_old,   -- NULL for INSERT
+    v_new    -- NULL for DELETE
+  );
+
+  return coalesce(new, old);
+end;
+$$;
+
+revoke execute on function public.audit_row_change()
+  from public;
+revoke execute on function public.audit_row_change()
+  from anon;
+revoke execute on function public.audit_row_change()
+  from authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Capture attachments — AFTER row-level triggers on every document/data table
+-- (document events, D-23 first half) AND profiles (permission events, D-23
+-- second half: role flips, is_active flips, must_change_password flips).
+-- Login attempt auditing lands with Plan 07's auth wrapper, not here.
+--
+-- Recursion safety: audit_log itself carries NO capture trigger (only its
+-- block_mutation guards), so the write_audit INSERT terminates immediately.
+-- Known interplay (deliberate): Plan 04's maintain_invoice_payment_totals()
+-- UPDATE of an issued invoice fires invoices.update capture too — every
+-- ledger-driven totals movement leaves a before/after trail, which is exactly
+-- what D-42 attribution wants.
+-- ---------------------------------------------------------------------------
+
+create trigger trg_audit_capture
+  after insert or update or delete on public.businesses
+  for each row
+execute function public.audit_row_change();
+
+create trigger trg_audit_capture
+  after insert or update or delete on public.business_members
+  for each row
+execute function public.audit_row_change();
+
+create trigger trg_audit_capture
+  after insert or update or delete on public.invoices
+  for each row
+execute function public.audit_row_change();
+
+create trigger trg_audit_capture
+  after insert or update or delete on public.invoice_lines
+  for each row
+execute function public.audit_row_change();
+
+create trigger trg_audit_capture
+  after insert or update or delete on public.payments
+  for each row
+execute function public.audit_row_change();
+
+create trigger trg_audit_capture
+  after insert or update or delete on public.customers
+  for each row
+execute function public.audit_row_change();
+
+create trigger trg_audit_capture
+  after insert or update or delete on public.catalog_items
+  for each row
+execute function public.audit_row_change();
+
+-- Identity/permission substrate — the access-event half of D-23.
+create trigger trg_audit_capture
+  after insert or update or delete on public.profiles
+  for each row
+execute function public.audit_row_change();
