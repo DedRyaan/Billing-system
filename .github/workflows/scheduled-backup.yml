@@ -1,0 +1,154 @@
+# Weekly restorable backup (D-39 / PITFALLS.md Pitfall 7).
+#
+# Supabase FREE tier has no automated backups. This workflow dumps the whole
+# database weekly over the Session Pooler connection in pg_dump custom format,
+# uploads it to an OWNED S3-compatible bucket, and rehearses a restore against
+# a scratch Postgres 17 service container so a corrupt/empty dump fails THIS
+# job loudly instead of being discovered during a disaster.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   SUPABASE_URL                - Project Settings → API → Project URL
+#                                 (consumed by keep-alive.yml; listed here per the plan's
+#                                 consolidated seven-secret inventory)
+#   SUPABASE_ANON_KEY           - Project Settings → API → anon public key
+#                                 (consumed by keep-alive.yml; listed here for the same reason)
+#   SUPABASE_SESSION_POOLER_URL - Project Settings → Database → Connection string →
+#                                 Session pooler (port 5432 URI; embeds the DB password —
+#                                 GitHub secret ONLY, never echoed)
+#   BACKUP_S3_ENDPOINT          - S3-compatible endpoint (R2/S3/B2) e.g. https://<account>.r2.cloudflarestorage.com
+#   BACKUP_S3_KEY               - Access key ID (scoped to the bucket, write-only ideally)
+#   BACKUP_S3_SECRET            - Secret access key
+#   BACKUP_S3_BUCKET            - Bucket name
+#
+# Client version rule: postgresql-client-17 from PGDG must match the server's
+# major (supabase/config.toml [db] major_version = 17); an older client refuses
+# or mis-dumps newer servers.
+name: scheduled-backup
+
+on:
+  schedule:
+    # Weekly, Sunday 04:43 UTC (= 10:13 IST Sunday).
+    - cron: "43 4 * * 0"
+  workflow_dispatch:
+
+concurrency:
+  group: scheduled-backup
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    services:
+      # Scratch instance for the restore rehearsal (Pitfall 7): a dump that
+      # cannot even be listed/read must fail this run.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: scratch
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - name: Install postgresql-client-17 (PGDG)
+        run: |
+          set -euo pipefail
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          . /etc/os-release
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt ${VERSION_CODENAME}-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client-17
+          pg_dump --version
+
+      - name: pg_dump (custom format) over Session Pooler
+        env:
+          SUPABASE_SESSION_POOLER_URL: ${{ secrets.SUPABASE_SESSION_POOLER_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SUPABASE_SESSION_POOLER_URL:-}" ]; then
+            echo "::error::SUPABASE_SESSION_POOLER_URL secret is not set (Project Settings -> Database -> Connection string -> Session pooler)"
+            exit 1
+          fi
+          pg_dump "${SUPABASE_SESSION_POOLER_URL}" \
+            --format=custom \
+            --file backup.dump
+          # Zero-byte guard (Pitfall 7): a silent empty dump is a failed dump.
+          if [ ! -s backup.dump ]; then
+            echo "::error::pg_dump produced a zero-byte file"
+            exit 1
+          fi
+          echo "dump size: $(du -h backup.dump | cut -f1)"
+
+      - name: Restore rehearsal against scratch Postgres 17
+        env:
+          PGPASSWORD: scratch # throwaway credential of this job's own ephemeral container only
+        run: |
+          set -euo pipefail
+          export PGHOST=localhost PGPORT=5432 PGUSER=postgres
+          # Manifest of everything the dump would restore.
+          pg_restore --list backup.dump > manifest.txt
+          if [ ! -s manifest.txt ]; then
+            echo "::error::restore manifest is empty — dump carries no TOC entries"
+            exit 1
+          fi
+          table_data="$(grep -c 'TABLE DATA' manifest.txt || true)"
+          if [ "${table_data}" -lt 1 ]; then
+            echo "::error::manifest contains no TABLE DATA entries — schema dumped but data missing"
+            exit 1
+          fi
+          echo "manifest entries: $(grep -c ';' manifest.txt), TABLE DATA items: ${table_data}"
+
+          # True rehearsal: restore into the scratch instance and prove our
+          # public tables come back. Supabase-specific roles/schemas (auth.*,
+          # storage.*, supabase_admin-owned objects) legitimately error on
+          # vanilla Postgres, so the restore runs WITHOUT --exit-on-error and
+          # we assert on what matters: public tables restored and queryable.
+          dropdb --if-exists rehearsed || true
+          createdb rehearsed || true
+          psql -d rehearsed \
+            -c "create extension if not exists pgcrypto;" || true
+          pg_restore --no-owner --no-privileges \
+            --dbname=rehearsed \
+            backup.dump > restore_errors.log 2>&1 || true
+          public_tables=$(psql -d rehearsed -tA \
+            -c "select count(*) from information_schema.tables where table_schema = 'public';")
+          echo "public tables present after rehearsal restore: ${public_tables}"
+          if [ "${public_tables}" -lt 1 ]; then
+            echo "::error::rehearsal restore produced zero public tables — dump not restorable"
+            echo "--- first 40 restore errors ---"
+            head -40 restore_errors.log || true
+            exit 1
+          fi
+
+      - name: Upload dump to owned bucket (S3-compatible)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.BACKUP_S3_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.BACKUP_S3_SECRET }}
+          BACKUP_S3_ENDPOINT: ${{ secrets.BACKUP_S3_ENDPOINT }}
+          BACKUP_S3_BUCKET: ${{ secrets.BACKUP_S3_BUCKET }}
+        run: |
+          set -euo pipefail
+          for var in BACKUP_S3_ENDPOINT BACKUP_S3_BUCKET AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY; do
+            if [ -z "${!var:-}" ]; then
+              echo "::error::${var} secret is not set"
+              exit 1
+            fi
+          done
+          ts="$(date -u +%Y%m%dT%H%M%SZ)"
+          aws s3 cp backup.dump "s3://${BACKUP_S3_BUCKET}/supabase-backups/backup-${ts}.dump" \
+            --endpoint-url "${BACKUP_S3_ENDPOINT}"
+          echo "uploaded supabase-backups/backup-${ts}.dump"
+          {
+            echo "### Backup run"
+            echo "- dump: custom format, uploaded to owned bucket"
+            echo "- restore rehearsal: passed (see steps above)"
+          } >> "$GITHUB_STEP_SUMMARY"
