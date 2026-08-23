@@ -10,7 +10,8 @@
 -- Locked decisions baked in here:
 --   Pitfall 7  append-only ledger + derived balances; idempotent client
 --              operation IDs so duplicate sync deliveries collapse at a
---              unique violation instead of double-counting money
+--              unique violation instead of double-counting money; statement-
+--              level mutation guards keep UPDATE/DELETE/TRUNCATE denials loud
 --   D-36       NO archive guard on payments — archived businesses keep
 --              accepting money-in while receivables trickle in (asymmetry:
 --              trg_archive_guard blocks new DOCUMENTS only)
@@ -18,7 +19,7 @@
 --              within assigned businesses; DELETE denied everywhere
 --              (retention; soft-delete via is_active)
 --   D-44       catalog_items: admin/super_admin-only writes; staff read-only
---              fixed price menu
+--              fixed price menu (statement-level guard keeps denials loud)
 --
 -- SYSTEM-MAINTENANCE CARVE-OUT CONTRACT (migration 0004 cross-plan promise):
 -- maintain_invoice_payment_totals() runs SECURITY DEFINER as the migration
@@ -198,6 +199,44 @@ create trigger trg_payment_totals
 execute function public.maintain_invoice_payment_totals();
 
 -- ---------------------------------------------------------------------------
+-- trg_payments_no_mutation — statement-level append-only backstop (RESEARCH
+-- Pattern 5 second gate). Grants deny UPDATE/DELETE loudly today; this guard
+-- keeps the denial LOUD (42501) even if a future migration re-grants
+-- privileges, where FORCE-RLS-with-no-policy would otherwise filter rows
+-- SILENTLY. Statement-level is deliberate: row-level triggers never fire for
+-- rows the (missing) policies render invisible, so per-row enforcement here
+-- would be decorative. Fires regardless of role — service_role included;
+-- corrections are reversal entries, never edits or erasures (Pitfall 7 /
+-- T-1-13).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.block_payment_mutation() returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  raise exception '% on % is append-only - corrections are reversal entries (Pitfall 7)',
+    TG_OP, TG_TABLE_NAME
+    using errcode = insufficient_privilege; -- 42501
+end;
+$$;
+
+create trigger trg_payments_no_update
+  before update on public.payments
+  for each statement
+execute function public.block_payment_mutation();
+
+create trigger trg_payments_no_delete
+  before delete on public.payments
+  for each statement
+execute function public.block_payment_mutation();
+
+create trigger trg_payments_no_truncate
+  before truncate on public.payments
+  for each statement
+execute function public.block_payment_mutation();
+
+-- ---------------------------------------------------------------------------
 -- Customers — staff-writable master data (D-43): any member of a business may
 -- add and edit customers within their assigned businesses. Deletion is denied
 -- EVERYWHERE (retention discipline mirrors D-19/D-35): rows leave daily views
@@ -310,3 +349,31 @@ create policy "catalog admins-delete" on public.catalog_items
     (select public.current_user_role()) in ('admin', 'super_admin')
     and (select public.can_access_business(business_id))
   );
+
+-- ---------------------------------------------------------------------------
+-- trg_catalog_staff_guard — statement-level D-44 backstop. The role-keyed
+-- policies above already filter staff out of UPDATE/DELETE silently; this
+-- guard makes staff-context writes LOUD (42501) instead — matching the
+-- plan's truth "staff inserting/updating catalog raises 42501". Fires before
+-- any row candidacy, so visibility cannot muffle it. Definer/migration
+-- contexts resolve to a NULL effective role and pass like admins (same
+-- convention as 0004's trg_staff_discount_guard).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.enforce_catalog_role_guard() returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  if (select public.current_user_role()) = 'staff' then
+    raise exception 'catalog management is restricted to admins (D-44)'
+      using errcode = insufficient_privilege; -- 42501
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+create trigger trg_catalog_staff_guard
+  before insert or update or delete on public.catalog_items
+  for each statement
+execute function public.enforce_catalog_role_guard();
