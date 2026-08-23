@@ -1,0 +1,17 @@
+.planning/
+
+# dependencies
+node_modules/
+
+# builds
+dist/
+*.tsbuildinfo
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# supabase local dev state
+supabase/.branches/
+supabase/.temp/
