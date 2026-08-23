@@ -196,3 +196,117 @@ create trigger trg_payment_totals
   after insert on public.payments
   for each row
 execute function public.maintain_invoice_payment_totals();
+
+-- ---------------------------------------------------------------------------
+-- Customers — staff-writable master data (D-43): any member of a business may
+-- add and edit customers within their assigned businesses. Deletion is denied
+-- EVERYWHERE (retention discipline mirrors D-19/D-35): rows leave daily views
+-- via the is_active soft-delete flag, never via DELETE. gstin stays plain
+-- text — structural validation (format + checksum) is Phase 2's pure engine
+-- per roadmap MSTR-02 mapping.
+--
+-- Append-only-by-absence shape reused: no "for delete" policy exists, so
+-- FORCE RLS denies deletes for every application role; authenticated also
+-- holds no DELETE grant.
+-- ---------------------------------------------------------------------------
+
+create table public.customers (
+  id          uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses(id) on delete cascade,
+  name        text not null,
+  state       text,                -- place-of-supply hint (Phase 2 GST engine input)
+  address     jsonb,
+  phone       text,
+  gstin       text,                -- plain text now; MSTR-02 structural checks arrive Phase 2
+  is_active   boolean not null default true,  -- soft-delete for retention
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+grant select, insert, update on public.customers to authenticated;
+
+alter table public.customers enable row level security;
+alter table public.customers force row level security;
+
+create policy "customers members-read" on public.customers
+  for select to authenticated
+  using ((select public.can_access_business(business_id)));
+
+create policy "customers members-insert" on public.customers
+  for insert to authenticated
+  with check ((select public.can_access_business(business_id)));
+
+-- D-43: full member editing rights — staff included, shared-pool style (no
+-- author restriction). WITH CHECK keeps edited rows inside accessible
+-- businesses so business_id cannot be silently re-scoped.
+create policy "customers members-update" on public.customers
+  for update to authenticated
+  using ((select public.can_access_business(business_id)))
+  with check ((select public.can_access_business(business_id)));
+
+-- Deliberately NO delete policy: customer history is retained forever;
+-- retirement happens through is_active = false.
+
+-- ---------------------------------------------------------------------------
+-- Catalog items — admin-owned price menu (D-44): staff bill from a fixed
+-- menu and hold read-only access; INSERT/UPDATE/DELETE are restricted to
+-- current_user_role() in ('admin', 'super_admin'). Ad-hoc custom-priced
+-- invoice lines stay available to staff regardless (D-45, landed in 0004 as
+-- unit_price_catalog NULL) — this table governs the MENU, not billing
+-- flexibility.
+--
+-- stock_qty lands now for schema completeness; atomic decrement machinery is
+-- Phase 4 finalize's concern (MSTR-05).
+-- ---------------------------------------------------------------------------
+
+create table public.catalog_items (
+  id          uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.businesses(id) on delete cascade,
+  name        text not null,
+  hsn_sac     text,
+  gst_rate    numeric(5,2) not null,
+  unit        text not null default 'nos',
+  price       numeric(14,2) not null,
+  stock_qty   integer not null default 0,     -- decremented atomically at finalize (Phase 4)
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+grant select, insert, update, delete on public.catalog_items to authenticated;
+
+alter table public.catalog_items enable row level security;
+alter table public.catalog_items force row level security;
+
+-- Every member of a business reads the menu (staff need it to bill).
+create policy "catalog members-read" on public.catalog_items
+  for select to authenticated
+  using ((select public.can_access_business(business_id)));
+
+-- Writes are admins/super_admins ONLY (D-44) — role-keyed, not
+-- membership-keyed: admins manage catalog across businesses they can see
+-- (D-11/D-12), staff never write even in their own business.
+create policy "catalog admins-insert" on public.catalog_items
+  for insert to authenticated
+  with check (
+    (select public.current_user_role()) in ('admin', 'super_admin')
+    and (select public.can_access_business(business_id))
+  );
+
+create policy "catalog admins-update" on public.catalog_items
+  for update to authenticated
+  using (
+    (select public.current_user_role()) in ('admin', 'super_admin')
+    and (select public.can_access_business(business_id))
+  )
+  with check (
+    (select public.current_user_role()) in ('admin', 'super_admin')
+    and (select public.can_access_business(business_id))
+  );
+
+create policy "catalog admins-delete" on public.catalog_items
+  for delete to authenticated
+  using (
+    (select public.current_user_role()) in ('admin', 'super_admin')
+    and (select public.can_access_business(business_id))
+  );
