@@ -182,3 +182,447 @@ create policy "profiles self-update" on public.profiles
   for update to authenticated
   using (id = (select auth.uid()))
   with check (id = (select auth.uid()));
+
+-- ---------------------------------------------------------------------------
+-- Task 2: lifecycle RPCs — unlock, deactivate/reactivate, transfer, business
+-- governance. Every function: SECURITY DEFINER, fixed search_path, internal
+-- authorization via current_user_role() (never client input), sets the
+-- privileged-mutation marker before touching guarded columns, and appends a
+-- write_audit entry D-23/T-1-24.
+--
+-- Cross-plan contract (Plan 07): the GoTrue half of lockout lives in
+-- service-role Edge Functions. The sign-in wrapper clears ban_duration FIRST,
+-- then calls unlock_account_profile() to clear profiles.locked_at + audit;
+-- deactivate/reactivate likewise pair with Plan 07's ban/sign-out endpoints.
+-- The data-plane is_active gate here is authoritative and instant either way.
+-- ---------------------------------------------------------------------------
+
+-- ---------------------------------------------------------------------------
+-- D-14 transfer state lives beside locked_at on profiles: the HOLDER row
+-- records who may claim super_admin and when the one-hour window opened.
+-- ---------------------------------------------------------------------------
+
+alter table public.profiles
+  add column pending_transfer_to uuid references public.profiles(id),
+  add column transfer_initiated_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- unlock_account_profile — THE narrow D-29 exception: any admin may UNLOCK a
+-- locked-out account, including a locked-out super_admin, but this path
+-- changes NOTHING except locked_at. Narrowness is structural: the body below
+-- contains exactly one column assignment; the pgTAP suite proves the whole
+-- row is unchanged apart from the lock. (Gate M passes inside marker'd RPCs,
+-- so keeping this function one-column-wide IS the enforcement.)
+-- ---------------------------------------------------------------------------
+
+create or replace function public.unlock_account_profile(p_target uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_before jsonb;
+  v_after  jsonb;
+begin
+  if (select public.current_user_role()) not in ('admin', 'super_admin') then
+    raise exception 'unlock_account_profile requires an admin or super_admin caller D-28 D-29'
+      using errcode = insufficient_privilege; -- staff denied; D-29 admits admins
+  end if;
+
+  select to_jsonb(p.*) into v_before
+    from public.profiles p where p.id = p_target;
+  if v_before is null then
+    raise exception 'unlock_account_profile target account not found';
+  end if;
+
+  perform set_config('gsd.privileged_mutation', 'on', true);
+
+  -- Deliberately the ONLY assignment in this function: locked_at = null.
+  update public.profiles set locked_at = null where id = p_target;
+
+  select to_jsonb(p.*) into v_after
+    from public.profiles p where p.id = p_target;
+
+  perform public.write_audit('profile.unlock', 'profiles', p_target::text,
+                             null, v_before, v_after);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- deactivate_staff_account / reactivate_staff_account — D-19/D-21 reversible
+-- departure. Admin callers manage STAFF rows only (D-11/D-17); super_admin
+-- manages anyone EXCEPT themselves (no self-lockout of the last super).
+-- Deactivation needs NO draft handling for D-22: drafts are a shared pool
+-- (D-41/D-42) already visible to admins, so an orphaned draft simply stays
+-- put, attributed to its deactivated creator (created_by survives — rows are
+-- never hard-deleted).
+-- ---------------------------------------------------------------------------
+
+create or replace function public.deactivate_staff_account(p_target uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller     text;
+  v_target_row public.profiles;
+begin
+  v_caller := (select public.current_user_role());
+  if v_caller is null then
+    raise exception 'deactivate_staff_account requires an active caller'
+      using errcode = insufficient_privilege; -- deactivated/deleted caller: no effective role
+  end if;
+  if v_caller not in ('admin', 'super_admin') then
+    raise exception 'deactivate_staff_account requires an admin or super_admin caller'
+      using errcode = insufficient_privilege;
+  end if;
+  if p_target = (select auth.uid()) then
+    raise exception 'deactivate_staff_account cannot deactivate your own account';
+  end if;
+
+  select * into v_target_row from public.profiles where id = p_target;
+  if v_target_row.id is null then
+    raise exception 'deactivate_staff_account target account not found';
+  end if;
+  if v_caller = 'admin' and v_target_row.role <> 'staff' then
+    raise exception 'deactivate_staff_account admins may only deactivate staff accounts D-11 D-17'
+      using errcode = insufficient_privilege; -- peer protection holds inside RPCs too
+  end if;
+
+  perform set_config('gsd.privileged_mutation', 'on', true);
+
+  update public.profiles set is_active = false where id = p_target;
+
+  perform public.write_audit('profile.deactivate', 'profiles', p_target::text,
+                             null,
+                             to_jsonb(v_target_row),
+                             jsonb_set(to_jsonb(v_target_row), '{is_active}', 'false'));
+end;
+$$;
+
+create or replace function public.reactivate_staff_account(p_target uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller     text;
+  v_target_row public.profiles;
+begin
+  v_caller := (select public.current_user_role());
+  if v_caller is null then
+    raise exception 'reactivate_staff_account requires an active caller'
+      using errcode = insufficient_privilege;
+  end if;
+  if v_caller not in ('admin', 'super_admin') then
+    raise exception 'reactivate_staff_account requires an admin or super_admin caller'
+      using errcode = insufficient_privilege;
+  end if;
+  if p_target = (select auth.uid()) then
+    raise exception 'reactivate_staff_account cannot reactivate your own account';
+  end if;
+
+  select * into v_target_row from public.profiles where id = p_target;
+  if v_target_row.id is null then
+    raise exception 'reactivate_staff_account target account not found';
+  end if;
+  if v_caller = 'admin' and v_target_row.role <> 'staff' then
+    raise exception 'reactivate_staff_account admins may only reactivate staff accounts D-11 D-17'
+      using errcode = insufficient_privilege;
+  end if;
+
+  perform set_config('gsd.privileged_mutation', 'on', true);
+
+  update public.profiles set is_active = true where id = p_target;
+
+  perform public.write_audit('profile.reactivate', 'profiles', p_target::text,
+                             null,
+                             to_jsonb(v_target_row),
+                             jsonb_set(to_jsonb(v_target_row), '{is_active}', 'true'));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- initiate_super_admin_transfer / confirm_super_admin_transfer — the D-14
+-- two-step handover. Step 1: sitting super_admin names a target (markers land
+-- on the HOLDER row). Step 2: the PENDING TARGET alone confirms, within one
+-- hour; roles swap and the old holder lands as a plain peer-protected admin.
+-- Re-initiating overwrites/restarts a stale pending record. No path promotes
+-- without a prior initiation — confirmed by suite failure modes.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.initiate_super_admin_transfer(p_target uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_target_row public.profiles;
+  v_holder     public.profiles;
+begin
+  if (select public.current_user_role()) <> 'super_admin' then
+    raise exception 'initiate_super_admin_transfer only super_admin may initiate the transfer D-14'
+      using errcode = insufficient_privilege;
+  end if;
+  if p_target = (select auth.uid()) then
+    raise exception 'initiate_super_admin_transfer cannot transfer to yourself';
+  end if;
+
+  select * into v_target_row from public.profiles where id = p_target;
+  if v_target_row.id is null then
+    raise exception 'initiate_super_admin_transfer target account not found';
+  end if;
+  if not v_target_row.is_active then
+    raise exception 'initiate_super_admin_transfer target must be an active account';
+  end if;
+
+  perform set_config('gsd.privileged_mutation', 'on', true);
+
+  select * into v_holder from public.profiles where id = (select auth.uid());
+  update public.profiles
+     set pending_transfer_to  = p_target,
+         transfer_initiated_at = now()
+   where id = v_holder.id;
+
+  perform public.write_audit('profile.transfer_initiated', 'profiles',
+                             v_holder.id::text, null,
+                             to_jsonb(v_holder),
+                             jsonb_build_object('pending_transfer_to', p_target,
+                                                'transfer_initiated_at', now()));
+end;
+$$;
+
+create or replace function public.confirm_super_admin_transfer()
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_me     uuid := (select auth.uid());
+  v_holder public.profiles;
+  v_target uuid;
+  v_init   timestamptz;
+begin
+  if (select public.current_user_role()) is null then
+    raise exception 'confirm_super_admin_transfer requires an active caller'
+      using errcode = insufficient_privilege;
+  end if;
+
+  select * into v_holder
+    from public.profiles
+   where role = 'super_admin'
+     and pending_transfer_to is not null;
+  if v_holder.id is null then
+    raise exception 'confirm_super_admin_transfer no pending transfer initiation - two-step confirmation requires initiate first D-14';
+  end if;
+
+  v_target := v_holder.pending_transfer_to;
+  v_init   := v_holder.transfer_initiated_at;
+
+  if v_target is distinct from v_me then
+    raise exception 'confirm_super_admin_transfer caller is not the pending transfer target'
+      using errcode = insufficient_privilege;
+  end if;
+  if v_init < now() - interval '1 hour' then
+    raise exception 'confirm_super_admin_transfer confirmation window expired - initiation valid for one hour';
+  end if;
+
+  perform set_config('gsd.privileged_mutation', 'on', true);
+
+  -- Old holder lands as a regular PEER-PROTECTED admin (D-14), markers cleared.
+  update public.profiles
+     set role = 'admin',
+         pending_transfer_to   = null,
+         transfer_initiated_at = null
+   where id = v_holder.id;
+
+  update public.profiles
+     set role = 'super_admin'
+   where id = v_me;
+
+  perform public.write_audit('profile.transfer_confirmed', 'profiles',
+                             v_holder.id::text, null,
+                             to_jsonb(v_holder),
+                             jsonb_build_object('old_holder_role', 'admin',
+                                                'new_super_admin', v_me));
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- create_business / archive_business / restore_business — D-15/D-37 business
+-- governance is super-admin-only, exercised through audited RPCs (the Plan 01
+-- policies already deny direct client writes; these RPCs are the sanctioned
+-- write path). Column CHECKs on businesses (gst D-49 uniqueness, D-31 prefix
+-- shape) still apply inside the definer insert.
+-- ---------------------------------------------------------------------------
+
+create or replace function public.create_business(
+  p_legal_name    text,
+  p_gstin         text,
+  p_trade_name    text default null,
+  p_number_format text default 'prefix_fy_seq',
+  p_prefix        text default null
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id    uuid;
+  v_after jsonb;
+begin
+  if (select public.current_user_role()) <> 'super_admin' then
+    raise exception 'create_business is restricted to super_admin D-15'
+      using errcode = insufficient_privilege;
+  end if;
+
+  insert into public.businesses (legal_name, trade_name, gstin, number_format, prefix)
+  values (p_legal_name, p_trade_name, p_gstin, p_number_format, p_prefix)
+  returning id into v_id;
+
+  select to_jsonb(b.*) into v_after from public.businesses b where b.id = v_id;
+  perform public.write_audit('business.create', 'businesses', v_id::text,
+                             v_id, null, v_after);
+  return v_id;
+end;
+$$;
+
+create or replace function public.archive_business(p_business_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_before jsonb;
+  v_after  jsonb;
+begin
+  if (select public.current_user_role()) <> 'super_admin' then
+    raise exception 'archive_business is restricted to super_admin D-37'
+      using errcode = insufficient_privilege;
+  end if;
+
+  select to_jsonb(b.*) into v_before from public.businesses b where b.id = p_business_id;
+  if v_before is null then
+    raise exception 'archive_business target business not found';
+  end if;
+
+  update public.businesses set archived_at = now() where id = p_business_id;
+
+  select to_jsonb(b.*) into v_after from public.businesses b where b.id = p_business_id;
+  perform public.write_audit('business.archive', 'businesses', p_business_id::text,
+                             p_business_id, v_before, v_after);
+end;
+$$;
+
+create or replace function public.restore_business(p_business_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_before jsonb;
+  v_after  jsonb;
+begin
+  if (select public.current_user_role()) <> 'super_admin' then
+    raise exception 'restore_business is restricted to super_admin D-37'
+      using errcode = insufficient_privilege;
+  end if;
+
+  select to_jsonb(b.*) into v_before from public.businesses b where b.id = p_business_id;
+  if v_before is null then
+    raise exception 'restore_business target business not found';
+  end if;
+
+  update public.businesses set archived_at = null where id = p_business_id;
+
+  select to_jsonb(b.*) into v_after from public.businesses b where b.id = p_business_id;
+  perform public.write_audit('business.restore', 'businesses', p_business_id::text,
+                             p_business_id, v_before, v_after);
+end;
+$$;
+
+-- ---------------------------------------------------------------------------
+-- EXECUTE hygiene: every governance RPC reachable by authenticated clients
+-- only; anon/PUBLIC revoked. Internal authorization re-checks role per call,
+-- so granting EXECUTE confers no unguarded power.
+-- ---------------------------------------------------------------------------
+
+revoke execute on function public.unlock_account_profile(uuid)
+  from public;
+revoke execute on function public.unlock_account_profile(uuid)
+  from anon;
+revoke execute on function public.unlock_account_profile(uuid)
+  from authenticated;
+grant execute on function public.unlock_account_profile(uuid)
+  to authenticated;
+
+revoke execute on function public.deactivate_staff_account(uuid)
+  from public;
+revoke execute on function public.deactivate_staff_account(uuid)
+  from anon;
+revoke execute on function public.deactivate_staff_account(uuid)
+  from authenticated;
+grant execute on function public.deactivate_staff_account(uuid)
+  to authenticated;
+
+revoke execute on function public.reactivate_staff_account(uuid)
+  from public;
+revoke execute on function public.reactivate_staff_account(uuid)
+  from anon;
+revoke execute on function public.reactivate_staff_account(uuid)
+  from authenticated;
+grant execute on function public.reactivate_staff_account(uuid)
+  to authenticated;
+
+revoke execute on function public.initiate_super_admin_transfer(uuid)
+  from public;
+revoke execute on function public.initiate_super_admin_transfer(uuid)
+  from anon;
+revoke execute on function public.initiate_super_admin_transfer(uuid)
+  from authenticated;
+grant execute on function public.initiate_super_admin_transfer(uuid)
+  to authenticated;
+
+revoke execute on function public.confirm_super_admin_transfer()
+  from public;
+revoke execute on function public.confirm_super_admin_transfer()
+  from anon;
+revoke execute on function public.confirm_super_admin_transfer()
+  from authenticated;
+grant execute on function public.confirm_super_admin_transfer()
+  to authenticated;
+
+revoke execute on function public.create_business(text, text, text, text, text)
+  from public;
+revoke execute on function public.create_business(text, text, text, text, text)
+  from anon;
+revoke execute on function public.create_business(text, text, text, text, text)
+  from authenticated;
+grant execute on function public.create_business(text, text, text, text, text)
+  to authenticated;
+
+revoke execute on function public.archive_business(uuid)
+  from public;
+revoke execute on function public.archive_business(uuid)
+  from anon;
+revoke execute on function public.archive_business(uuid)
+  from authenticated;
+grant execute on function public.archive_business(uuid)
+  to authenticated;
+
+revoke execute on function public.restore_business(uuid)
+  from public;
+revoke execute on function public.restore_business(uuid)
+  from anon;
+revoke execute on function public.restore_business(uuid)
+  from authenticated;
+grant execute on function public.restore_business(uuid)
+  to authenticated;
