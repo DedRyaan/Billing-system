@@ -33,10 +33,22 @@
 -- Runtime evidence: authored alongside Windows-local execution where the
 -- Docker daemon is unavailable (WINDOWS.md convention) - suite must run
 -- green via `supabase test db` in CI/Wave-7 before sign-off.
+--
+-- Plan 01-12 repair (evidence: CI runs 32743218391 / 32759968242):
+--   * Two permanent Pitfall-1 probes open Block 1, pinning helper resolution
+--     and reshaped-policy presence BEFORE any negative assert.
+--   * Post-write read-back assertions run from READING-CAPABLE vantages
+--     (reset-role/cleared-sub pockets): an admin holds NO select policy that
+--     reaches another user's profiles row, so counting under an admin sub can
+--     NEVER see the target row even when the UPDATE landed - structural
+--     blindness, not evidence of a failed write.
+--   * Query-string-first is() calls pass SCALAR SUBQUERIES: pgTAP is() is a
+--     pure value comparator that never executes SQL, and untyped literals
+--     crash polymorphic resolution ("could not determine polymorphic type").
 
 begin;
 set search_path = public, extensions;
-select plan(43);
+select plan(45);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (superuser context): three tiers + one extra admin (the peer
@@ -80,6 +92,27 @@ update public.profiles set locked_at = now()
 set local role authenticated;
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin
 
+-- Pitfall-1 Probe 1: does the role helper resolve under THIS fixture's JWT
+-- claim? Kills or confirms the null-helper hypothesis in one line of CI out.
+select results_eq(
+  $$select public.current_user_role()$$,
+  ARRAY['admin'::text],
+  'probe: current_user_role() resolves to admin under this fixture''s jwt sub - discriminates helper resolution');
+
+-- Pitfall-1 Probe 2: the 0007-reshaped policy is present in pg_policies -
+-- catalog read from a superuser pocket so no policy state can mask it.
+reset role;
+set local request.jwt.claim.sub = '';
+select results_eq(
+  $$select count(*) from pg_policies
+     where schemaname = 'public'
+       and tablename = 'profiles'
+       and policyname = 'profiles admin-manages-staff'$$,
+  ARRAY[1::bigint],
+  'probe: the reshaped ''profiles admin-manages-staff'' policy is present - pins the missing-policy hypothesis');
+set local role authenticated;
+set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
+
 select throws_ok(
   $$update public.profiles set full_name = 'Renamed Peer' where id = '70000000-0000-0000-0000-000000000003'$$,
   '42501', 'peer-protected',
@@ -94,10 +127,16 @@ select lives_ok(
   $$update public.profiles set full_name = 'Staff Renamed' where id = '70000000-0000-0000-0000-000000000004'$$,
   'admin renames a STAFF row freely - full power over staff (D-11/D-12)');
 
+-- Positive control from a READING vantage (no admin select policy reaches
+-- another user's row - counting under the admin sub was structurally blind).
+reset role;
+set local request.jwt.claim.sub = '';
 select results_eq(
   $$select count(*) from public.profiles where id = '70000000-0000-0000-0000-000000000004' and full_name = 'Staff Renamed'$$,
   ARRAY[1::bigint],
   'positive control: the staff rename actually landed (guards against silent-filter masking)');
+set local role authenticated;
+set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000001'; -- super_admin
 
@@ -159,8 +198,8 @@ select results_eq(
   'deactivated staff sees ZERO rows on the very next query DESPITE the still-valid token (D-20 instant data-plane death)');
 
 select is(
-  $$select coalesce(public.current_user_role(), 'none')$$,
-  'none',
+  (select coalesce(public.current_user_role(), 'none')),
+  'none'::text,
   'deactivated account holds no effective role anywhere (helpers gate on is_active)');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin
@@ -212,15 +251,21 @@ select lives_ok(
   $$select public.unlock_account_profile('70000000-0000-0000-0000-000000000001')$$,
   'ANY admin unlocks the locked-out SUPER ADMIN - the D-29 escape hatch');
 
+-- Narrowness read-back from a reading vantage (the acting admin cannot SELECT
+-- the super admin's row - self-read-only select policies).
+reset role;
+set local request.jwt.claim.sub = '';
 select is(
-  $$select (locked_at is null)
-     and role = 'super_admin'
-     and is_active
-     and full_name = 'Owner One'
-    from public.profiles
-    where id = '70000000-0000-0000-0000-000000000001'$$,
+  (select (locked_at is null)
+      and role = 'super_admin'
+      and is_active
+      and full_name = 'Owner One'
+     from public.profiles
+     where id = '70000000-0000-0000-0000-000000000001'),
   true,
   'unlock changed ONLY the lock - role, activation and identity untouched (narrow exception stays narrow, D-29)');
+set local role authenticated;
+set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
 
 -- ---------------------------------------------------------------------------
 -- Block 5: D-14 two-step super-admin transfer
@@ -260,6 +305,10 @@ select lives_ok(
   $$select public.confirm_super_admin_transfer()$$,
   'step 2: the PENDING TARGET confirms within the window');
 
+-- Swap verification from a reading vantage: neither post-transfer row set is
+-- fully SELECT-visible under Admin Two's own token.
+reset role;
+set local request.jwt.claim.sub = '';
 select results_eq(
   $$select role from public.profiles
      where id in ('70000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000003')
@@ -268,10 +317,12 @@ select results_eq(
   'roles swapped: old holder demoted to plain PEER-PROTECTED admin, target promoted (D-14)');
 
 select is(
-  $$select (select pending_transfer_to is null and transfer_initiated_at is null from public.profiles where id = '70000000-0000-0000-0000-000000000001')
-     and (select pending_transfer_to is null and transfer_initiated_at is null from public.profiles where id = '70000000-0000-0000-0000-000000000003')$$,
+  (select (select pending_transfer_to is null and transfer_initiated_at is null from public.profiles where id = '70000000-0000-0000-0000-000000000001')
+      and (select pending_transfer_to is null and transfer_initiated_at is null from public.profiles where id = '70000000-0000-0000-0000-000000000003')),
   true,
   'pending markers fully cleared on both rows after confirmation');
+set local role authenticated;
+set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000003'; -- new super_admin restored
 
 -- Expired-window mode: fresh initiation, then age past the one-hour limit.
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000003'; -- new super_admin
@@ -341,7 +392,7 @@ select lives_ok(
   'super_admin archives Business A (D-37)');
 
 select is(
-  $$select archived_at is not null from public.businesses where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1'$$,
+  (select archived_at is not null from public.businesses where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1'),
   true,
   'archive stamped archived_at');
 
@@ -359,7 +410,7 @@ select lives_ok(
   'super_admin restores Business A (D-37)');
 
 select is(
-  $$select archived_at is null from public.businesses where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1'$$,
+  (select archived_at is null from public.businesses where id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1'),
   true,
   'restore clears archived_at');
 
