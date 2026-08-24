@@ -34,7 +34,9 @@
 -- Docker daemon is unavailable (WINDOWS.md convention) - suite must run
 -- green via `supabase test db` in CI/Wave-7 before sign-off.
 --
--- Plan 01-12 repair (evidence: CI runs 32743218391 / 32759968242):
+-- Plan 01-12 repair (evidence: CI runs 32743218391 / 32762494928 /
+-- 32763725256 / 32764405453 / 32764876499 / 32765886005 / 32766657430 /
+-- 32767213999 / 32767902991 / 32768298424 / 32769070295):
 --   * Two permanent Pitfall-1 probes open Block 1, pinning helper resolution
 --     and reshaped-policy presence BEFORE any negative assert.
 --   * Post-write read-back assertions run from READING-CAPABLE vantages
@@ -45,10 +47,20 @@
 --   * Query-string-first is() calls pass SCALAR SUBQUERIES: pgTAP is() is a
 --     pure value comparator that never executes SQL, and untyped literals
 --     crash polymorphic resolution ("could not determine polymorphic type").
+--
+-- ESCALATED DEFECT (01-12 -> production scope): the stored 0007 reshape is
+-- catalog-correct yet Postgres mis-evaluates that exact expression shape -
+--   (SELECT <security-definer fn>()) = '<const>' AND <col> IN (<literals>)
+-- inside FOR UPDATE USING - matching ZERO rows for admin callers, while the
+-- identical predicate passes as a plain SELECT and equivalent rewrites (arm-
+-- order swap, unwrapped call, length() arm) evaluate correctly on clean twin
+-- tables. Consequence: admin->admin/STAFF direct updates filter silently, so
+-- Gate P can never fire its designed loud 42501. Fix requires a policy-shape
+-- migration (production scope); see 01-12-SUMMARY.md hypothesis ranking.
 
 begin;
 set search_path = public, extensions;
-select plan(57);
+select plan(48);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (superuser context): three tiers + one extra admin (the peer
@@ -125,145 +137,29 @@ select results_eq(
   ARRAY[true],
   'probe: stored qual carries the reshape signature - helper=admin arm + staff/admin membership arm');
 
--- TEMPORARY Branch-B discriminators: separate stored-shape truth from runtime
--- behavior (probes green + correct qual yet admin-sub updates match zero rows,
--- run 32764876499). Remove once the silence root cause is closed.
-select results_eq(
-  $$select encode(convert_to(coalesce(polcmd, '*')::text || polpermissive::text, 'UTF8'), 'escape')
-     from pg_policy
-     where polrelid = 'public.profiles'::regclass
-       and polname = 'profiles admin-manages-staff'$$,
-  ARRAY['wtrue'],
-  'DIAG (temporary): stored policy command+permissiveness (expect wtrue = permissive UPDATE)');
-
-select results_eq(
-  $$select count(*) from pg_policy
-     where polrelid = 'public.profiles'::regclass
-       and polcmd in ('w', '*')$$,
-  ARRAY[3::bigint],
-  'DIAG (temporary): three permissive update/all policies exist on profiles');
-
--- TEMPORARY sandbox: clone the exact reshaped-policy pair onto a temp table
--- and compare behavior against the live profiles table. Discriminates a
--- broken live POLICY OBJECT from engine/pattern semantics.
-create temp table sandbox_profiles (
-  id uuid primary key,
-  role text not null
-);
-alter table sandbox_profiles enable row level security;
-create policy sandbox_self_update on sandbox_profiles
-  for update to authenticated
-  using (id = (select auth.uid()))
-  with check (id = (select auth.uid()));
-create policy sandbox_reshaped on sandbox_profiles
-  for update to authenticated
-  using ((select public.current_user_role()) = 'admin' and role in ('staff', 'admin'))
-  with check ((select public.current_user_role()) = 'admin' and role = 'staff');
-insert into sandbox_profiles values
-  ('70000000-0000-0000-0000-000000000002', 'admin'),
-  ('70000000-0000-0000-0000-000000000003', 'admin'),
-  ('70000000-0000-0000-0000-000000000004', 'staff');
--- Temp tables inherit no default grants for authenticated: mirror the real grant.
-grant select, update on pg_temp.sandbox_profiles to authenticated;
-
-set local role authenticated;
-set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
-
--- TEMPORARY: re-evaluate the USING premise exactly as the stored policy does.
-select results_eq(
-  $$select (select public.current_user_role()) = 'admin'$$,
-  ARRAY[true],
-  'DIAG (temporary): USING premise arm-1 evaluates true under the admin sub');
-
--- TEMPORARY: conjunction evaluated as a plain SELECT under the admin sub.
+-- PERMANENT paradox pin (run 32769070295 evidence chain): the IDENTICAL
+-- predicate evaluates TRUE as a plain SELECT under the admin sub while the
+-- stored UPDATE policy built from it matches ZERO rows. This is the exact
+-- engine-evaluation defect escalated to production scope - it must stay
+-- green-honest: when the production reshape (0013) lands, this stays true.
 select results_eq(
   $$select count(*) from public.profiles
      where (select public.current_user_role()) = 'admin'
        and role = any(array['staff', 'admin'])$$,
   ARRAY[1::bigint],
-  'DIAG (temporary): USING conjunction true for own row in plain SELECT under admin sub');
+  'probe: the reshaped USING conjunction evaluates TRUE in plain SELECT under the admin sub');
 
--- TEMPORARY: update-returning reachability probe (rls_isolation convention) -
--- expect 1 once the silence is defeated; have/want quantifies it meanwhile.
+-- PERMANENT regression guard for the escalated defect (rls_isolation CTE
+-- convention): an admin-sub UPDATE must MATCH peer rows so the guard trigger
+-- can deny them LOUDLY. Red (have 0) until migration 0013 fixes the policy
+-- shape; flips green exactly when the loud-denial contract is restored.
 select results_eq(
   $$with attempted as (
        update public.profiles set full_name = full_name where id = '70000000-0000-0000-0000-000000000003'
        returning 1
      ) select count(*) from attempted$$,
   ARRAY[1::bigint],
-  'DIAG (temporary): admin-sub update MATCHES the peer-admin row (reachability)');
-
--- TEMPORARY: SAME update shape against the SANDBOX with identical policies.
-select results_eq(
-  $$with attempted as (
-       update sandbox_profiles set role = role where id = '70000000-0000-0000-0000-000000000003'
-       returning 1
-     ) select count(*) from attempted$$,
-  ARRAY[1::bigint],
-  'DIAG (temporary): sandbox twin of the reshaped policy MATCHES the peer row');
-select results_eq(
-  $$with attempted as (
-       update sandbox_profiles set role = role where id = '70000000-0000-0000-0000-000000000004'
-       returning 1
-     ) select count(*) from attempted$$,
-  ARRAY[1::bigint],
-  'DIAG (temporary): sandbox twin matches the STAFF row too');
-
--- TEMPORARY round-G matrix: isolate WHICH property of the conjunction kills
--- UPDATE-policy matching. Four twins differing ONLY in the USING arm shape.
-create temp table sbx_const (id uuid primary key, role text not null);
-create policy sbx_const_p on sbx_const for update to authenticated
-  using (role in ('staff', 'admin'))
-  with check (role in ('staff', 'admin'));
-create temp table sbx_order (id uuid primary key, role text not null);
-create policy sbx_order_p on sbx_order for update to authenticated
-  using (role in ('staff', 'admin') and (select public.current_user_role()) = 'admin')
-  with check (role in ('staff', 'admin') and (select public.current_user_role()) = 'admin');
-create temp table sbx_noselect (id uuid primary key, role text not null);
-create policy sbx_noselect_p on sbx_noselect for update to authenticated
-  using (public.current_user_role() = 'admin' and role in ('staff', 'admin'))
-  with check (public.current_user_role() = 'admin' and role in ('staff', 'admin'));
-create temp table sbx_len (id uuid primary key, role text not null);
-create policy sbx_len_p on sbx_len for update to authenticated
-  using ((select public.current_user_role()) = 'admin' and length(role) > 0)
-  with check ((select public.current_user_role()) = 'admin' and length(role) > 0);
-insert into sbx_const values ('70000000-0000-0000-0000-000000000003', 'admin');
-insert into sbx_order values ('70000000-0000-0000-0000-000000000003', 'admin');
-insert into sbx_noselect values ('70000000-0000-0000-0000-000000000003', 'admin');
-insert into sbx_len values ('70000000-0000-0000-0000-000000000003', 'admin');
-grant update on pg_temp.sbx_const to authenticated;
-grant update on pg_temp.sbx_order to authenticated;
-grant update on pg_temp.sbx_noselect to authenticated;
-grant update on pg_temp.sbx_len to authenticated;
-
-select results_eq(
-  $$with attempted as (
-       update sbx_const set role = role where id = '70000000-0000-0000-0000-000000000003'
-       returning 1
-     ) select count(*) from attempted$$,
-  ARRAY[1::bigint],
-  'DIAG (temporary): column-arm-only policy MATCHES (constant-context baseline)');
-select results_eq(
-  $$with attempted as (
-       update sbx_order set role = role where id = '70000000-0000-0000-0000-000000000003'
-       returning 1
-     ) select count(*) from attempted$$,
-  ARRAY[1::bigint],
-  'DIAG (temporary): arm-order-swapped twin MATCHES?');
-select results_eq(
-  $$with attempted as (
-       update sbx_noselect set role = role where id = '70000000-0000-0000-0000-000000000003'
-       returning 1
-     ) select count(*) from attempted$$,
-  ARRAY[1::bigint],
-  'DIAG (temporary): un-wrapped helper-call twin MATCHES?');
-select results_eq(
-  $$with attempted as (
-       update sbx_len set role = role where id = '70000000-0000-0000-0000-000000000003'
-       returning 1
-     ) select count(*) from attempted$$,
-  ARRAY[1::bigint],
-  'DIAG (temporary): length()-arm twin (no string equality) MATCHES?');
+  'regression guard: admin-sub update REACHES the peer-admin row so Gate P can deny it loudly (escalated defect, see 01-12-SUMMARY)');
 
 select throws_ok(
   $$update public.profiles set full_name = 'Renamed Peer' where id = '70000000-0000-0000-0000-000000000003'$$,
