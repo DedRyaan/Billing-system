@@ -32,7 +32,9 @@ describe("live cloud wire posture (linked project)", () => {
     });
 
     expect(response.status).toBe(200);
-    expect((await response.text()).trim()).toBe("ok");
+    // PostgREST serializes the scalar either bare or JSON-encoded across
+    // versions; accept both spellings of the constant.
+    expect(["ok", '"ok"']).toContain((await response.text()).trim());
   });
 
   itCloud("anon is DENIED EXECUTE on allocate_next_number (SC-4 security twin)", async () => {
