@@ -129,7 +129,7 @@ select results_eq(
 -- behavior (probes green + correct qual yet admin-sub updates match zero rows,
 -- run 32764876499). Remove once the silence root cause is closed.
 select results_eq(
-  $$select encode(convert_to(coalesce(polcmd, '*') || polpermissive::text, 'UTF8'), 'escape')
+  $$select encode(convert_to(coalesce(polcmd, '*')::text || polpermissive::text, 'UTF8'), 'escape')
      from pg_policy
      where polrelid = 'public.profiles'::regclass
        and polname = 'profiles admin-manages-staff'$$,
