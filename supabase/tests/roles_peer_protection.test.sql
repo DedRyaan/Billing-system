@@ -48,7 +48,7 @@
 
 begin;
 set search_path = public, extensions;
-select plan(53);
+select plan(57);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (superuser context): three tiers + one extra admin (the peer
@@ -208,6 +208,62 @@ select results_eq(
      ) select count(*) from attempted$$,
   ARRAY[1::bigint],
   'DIAG (temporary): sandbox twin matches the STAFF row too');
+
+-- TEMPORARY round-G matrix: isolate WHICH property of the conjunction kills
+-- UPDATE-policy matching. Four twins differing ONLY in the USING arm shape.
+create temp table sbx_const (id uuid primary key, role text not null);
+create policy sbx_const_p on sbx_const for update to authenticated
+  using (role in ('staff', 'admin'))
+  with check (role in ('staff', 'admin'));
+create temp table sbx_order (id uuid primary key, role text not null);
+create policy sbx_order_p on sbx_order for update to authenticated
+  using (role in ('staff', 'admin') and (select public.current_user_role()) = 'admin')
+  with check (role in ('staff', 'admin') and (select public.current_user_role()) = 'admin');
+create temp table sbx_noselect (id uuid primary key, role text not null);
+create policy sbx_noselect_p on sbx_noselect for update to authenticated
+  using (public.current_user_role() = 'admin' and role in ('staff', 'admin'))
+  with check (public.current_user_role() = 'admin' and role in ('staff', 'admin'));
+create temp table sbx_len (id uuid primary key, role text not null);
+create policy sbx_len_p on sbx_len for update to authenticated
+  using ((select public.current_user_role()) = 'admin' and length(role) > 0)
+  with check ((select public.current_user_role()) = 'admin' and length(role) > 0);
+insert into sbx_const values ('70000000-0000-0000-0000-000000000003', 'admin');
+insert into sbx_order values ('70000000-0000-0000-0000-000000000003', 'admin');
+insert into sbx_noselect values ('70000000-0000-0000-0000-000000000003', 'admin');
+insert into sbx_len values ('70000000-0000-0000-0000-000000000003', 'admin');
+grant update on pg_temp.sbx_const to authenticated;
+grant update on pg_temp.sbx_order to authenticated;
+grant update on pg_temp.sbx_noselect to authenticated;
+grant update on pg_temp.sbx_len to authenticated;
+
+select results_eq(
+  $$with attempted as (
+       update sbx_const set role = role where id = '70000000-0000-0000-0000-000000000003'
+       returning 1
+     ) select count(*) from attempted$$,
+  ARRAY[1::bigint],
+  'DIAG (temporary): column-arm-only policy MATCHES (constant-context baseline)');
+select results_eq(
+  $$with attempted as (
+       update sbx_order set role = role where id = '70000000-0000-0000-0000-000000000003'
+       returning 1
+     ) select count(*) from attempted$$,
+  ARRAY[1::bigint],
+  'DIAG (temporary): arm-order-swapped twin MATCHES?');
+select results_eq(
+  $$with attempted as (
+       update sbx_noselect set role = role where id = '70000000-0000-0000-0000-000000000003'
+       returning 1
+     ) select count(*) from attempted$$,
+  ARRAY[1::bigint],
+  'DIAG (temporary): un-wrapped helper-call twin MATCHES?');
+select results_eq(
+  $$with attempted as (
+       update sbx_len set role = role where id = '70000000-0000-0000-0000-000000000003'
+       returning 1
+     ) select count(*) from attempted$$,
+  ARRAY[1::bigint],
+  'DIAG (temporary): length()-arm twin (no string equality) MATCHES?');
 
 select throws_ok(
   $$update public.profiles set full_name = 'Renamed Peer' where id = '70000000-0000-0000-0000-000000000003'$$,
