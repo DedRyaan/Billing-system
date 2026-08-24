@@ -144,13 +144,13 @@ set local role authenticated;
 set local request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
 
 select is(
-  $$select a.action || '|' || (a.before_val ->> 'role') || '|' || (a.after_val ->> 'role')
+  (select a.action || '|' || (a.before_val ->> 'role') || '|' || (a.after_val ->> 'role')
       from public.audit_log a
      where a.action = 'profiles.update'
        and a.target_table = 'profiles'
        and a.target_id = '22222222-2222-2222-2222-222222222222'
-     order by a.id desc limit 1$$,
-  'profiles.update|staff|admin'::text,
+     order by a.id desc limit 1),
+  'profiles.update|staff|admin',
   'role flip captured with before_val/after_val differing exactly on the role key (D-23/D-26)');
 
 -- ---------------------------------------------------------------------------
@@ -178,8 +178,8 @@ select results_eq(
   'no-JWT append stores actor_id NULL + actor_type system (AUDIT-service-actor semantics)');
 
 select is(
-  $$(select public.health_check())$$,
-  'ok'::text,
+  (select public.health_check()),
+  'ok',
   'health_check RPC returns the constant ok - free-tier keep-alive target (D-39)');
 
 select * from finish();

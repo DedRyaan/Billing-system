@@ -114,9 +114,9 @@ select lives_ok(
   'staff A edits staff B''s draft header - drafts are a shared pool (D-41/D-42)');
 
 select is(
-  $$select customer_name from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000002'::uuid$$,
-  'Renamed By Staff A'::text,
+  (select customer_name from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000002'::uuid),
+  'Renamed By Staff A',
   'shared-pool edit actually landed despite different created_by');
 
 select lives_ok(
@@ -174,9 +174,9 @@ select results_eq(
   'admin DELETE on issued document removes ZERO rows too');
 
 select is(
-  $$select customer_name || '|' || status::text from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000001'::uuid$$,
-  'Original Buyer Pvt Ltd|issued'::text,
+  (select customer_name || '|' || status::text from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000001'::uuid),
+  'Original Buyer Pvt Ltd|issued',
   'issued document byte-identical after every client attempt (T-1-09)');
 
 -- Clients cannot flip status out of draft even WITH a stolen-looking number:
@@ -193,8 +193,8 @@ select throws_ok(
 select throws_ok(
   $$update public.invoices set status = 'voided'
     where id = 'c0000000-0000-0000-0000-000000000002'::uuid$$,
-  '42501', null,
-  'client draft-to-voided shortcut rejected at policy layer');
+  'P0001', 'illegal transition draft to voided - issue first, then void (D-16)',
+  'client draft-to-voided shortcut dies loudly at the state machine - BEFORE trigger precedes policy WITH CHECK');
 
 -- ---------------------------------------------------------------------------
 -- Block 4: isolation negatives + positive control (staff B vs business A)
@@ -239,7 +239,7 @@ set local request.jwt.claim.sub = '77777777-7777-7777-7777-777777777777';
 select throws_ok(
   $$insert into public.invoices (business_id, fy, customer_name)
     values ('cccccccc-cccc-cccc-cccc-cccccccccccc'::uuid, '26-27', 'Too Late')$$,
-  'P0001', 'archived businesses',
+  'P0001', 'new documents are blocked for archived businesses (D-36)',
   'INSERT into an archived business raises the D-36 exception (trg_archive_guard)');
 
 select results_eq(
@@ -273,13 +273,13 @@ set local request.jwt.claim.sub = '';
 select throws_ok(
   $$update public.invoices set customer_name = 'Definer Tamper'
     where id = 'c0000000-0000-0000-0000-000000000001'::uuid$$,
-  'P0001', 'immutable',
+  'P0001', 'issued documents are immutable - non-system column(s) changed: customer_name',
   'definer-context field edit on issued document raises (carve-out confined to registry columns)');
 
 select throws_ok(
   $$update public.invoices set status = 'issued'
     where id = 'c0000000-0000-0000-0000-000000000003'::uuid$$,
-  'P0001', 'allocated sequence number',
+  'P0001', 'transition draft to issued requires an allocated sequence number - finalize owns numbering (allocate_next_number)',
   'draft-to-issued without seq rejected - finalize owns allocation');
 
 -- Positive finalize shape: allocated number present -> transition allowed.
@@ -291,9 +291,9 @@ select lives_ok(
   'finalize-shaped issuance (seq allocated) succeeds');
 
 select is(
-  $$select status::text from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000003'::uuid$$,
-  'issued'::text,
+  (select status::text from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000003'::uuid),
+  'issued',
   'draft became issued through the sanctioned path');
 
 -- D-16 PAIR: identical transition, only the identity differs.
@@ -302,7 +302,7 @@ set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111'; -- sta
 select throws_ok(
   $$update public.invoices set status = 'voided'
     where id = 'c0000000-0000-0000-0000-000000000004'::uuid$$,
-  'P0001', 'restricted to admins',
+  'P0001', 'voiding an issued invoice is restricted to admins (D-16)',
   'staff attempting issued-to-voided hits the D-16 exception');
 
 set local request.jwt.claim.sub = '66666666-6666-6666-6666-666666666666'; -- super admin
@@ -316,9 +316,9 @@ select lives_ok(
   'super_admin performs the identical void successfully (D-16 other half)');
 
 select is(
-  $$select status::text from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000004'::uuid$$,
-  'voided'::text,
+  (select status::text from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000004'::uuid),
+  'voided',
   'document landed in voided state');
 
 -- Voided documents are frozen in every direction, every context.
@@ -327,19 +327,19 @@ set local request.jwt.claim.sub = '';
 select throws_ok(
   $$update public.invoices set void_reason = 'second thoughts'
     where id = 'c0000000-0000-0000-0000-000000000004'::uuid$$,
-  'P0001', 'frozen',
+  'P0001', 'voided documents are frozen - no further transitions in any direction',
   'UPDATE on voided document raises - terminal state, no further transitions');
 
 select throws_ok(
   $$delete from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000004'::uuid$$,
-  '42501', 'only draft documents may be deleted',
+  '42501', 'only draft documents may be deleted - issued and voided documents are permanent (GST retention)',
   'DELETE of voided document raises even in definer context (GST retention)');
 
 select throws_ok(
   $$delete from public.invoice_lines
     where id = 'e0000000-0000-0000-0000-000000000002'::uuid$$,
-  '42501', 'permanent',
+  '42501', 'lines of issued or voided documents are permanent - corrections are void-and-reissue',
   'lines of an issued document cannot be shed (trg_line_delete_guard)');
 
 -- Client-side mirror: the DELETE policy filters issued-parent lines entirely.
@@ -367,7 +367,7 @@ select throws_ok(
       (invoice_id, description, unit_price_catalog, unit_price_charged, discount_pct, gst_rate)
     values ('c0000000-0000-0000-0000-000000000002'::uuid, 'Big Discount',
             100.00, 45.00, 51.00, 18.00)$$,
-  'P0001', '50 percent',
+  'P0001', 'staff discount cap is 50 percent per line (D-47)',
   'staff line with discount_pct 51 raises the D-47 cap exception');
 
 set local request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
@@ -386,7 +386,7 @@ select throws_ok(
       (invoice_id, description, unit_price_catalog, unit_price_charged, discount_pct, gst_rate)
     values ('c0000000-0000-0000-0000-000000000002'::uuid, 'Markup',
             100.00, 120.00, 0.00, 18.00)$$,
-  'P0001', 'catalog price',
+  'P0001', 'staff may only discount below catalog price, never above it (D-46)',
   'staff charging ABOVE catalog price raises the D-46 downward-only exception');
 
 set local request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';

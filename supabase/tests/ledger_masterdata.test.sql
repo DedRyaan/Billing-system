@@ -48,7 +48,7 @@ insert into public.profiles (id, email, full_name, role) values
 insert into public.businesses (id, legal_name, gstin, archived_at) values
   ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', 'Business A',      '29AAAAA0000A1Z0', null),
   ('bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'Business B',      '27BBBBB0000B1Z3', null),
-  ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'Archived Biz',    '24CCCCC0000C1Z6', now()),  -- D-36 target
+  ('cccccccc-cccc-cccc-cccc-cccccccccccc', 'Archived Biz',    '24CCCCC0000C1Z6', null),   -- D-36 target: archived BELOW, after its issued document is seeded
   ('dddddddd-dddd-dddd-dddd-dddddddddddd', 'Brand New Biz',   '07DDDDD0000D1Z9', null);   -- emptiness control
 
 insert into public.business_members (business_id, user_id) values
@@ -74,6 +74,12 @@ values
   ('c0000000-0000-0000-0000-000000000301', 'cccccccc-cccc-cccc-cccc-cccccccccccc', '26-27', 'issued', 1, now(),
    '55555555-5555-5555-5555-555555555555', 'Buyer C Traders', '24CCCCC0000C1Z6', 'intra_state', 'regular', 600.00,
    '55555555-5555-5555-5555-555555555555');
+
+-- NOW archive business C: trg_archive_guard blocks NEW documents into an
+-- already-archived business (fixtures included), so the issued document must
+-- exist first. Block 8 proves both archived-state halves from here on.
+update public.businesses set archived_at = now()
+ where id = 'cccccccc-cccc-cccc-cccc-cccccccccccc';
 
 -- Draft WITH a seeded non-zero total proves the draft-or-issued payment path
 -- (money can arrive pre-issue; totals maintenance is status-blind).
@@ -112,9 +118,9 @@ select results_eq(
 set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 
 select is(
-  $$select paid_amount || '|' || payment_status from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '0|unpaid'::text,
+  (select paid_amount || '|' || payment_status from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000101'::uuid),
+  '0.00|unpaid',
   'invoice with zero payments shows paid_amount 0 and status unpaid (PAY-empty)');
 
 select lives_ok(
@@ -126,9 +132,9 @@ select lives_ok(
   'staff records first part-payment against own-business issued invoice');
 
 select is(
-  $$select paid_amount || '|' || payment_status from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '400.00|partial'::text,
+  (select paid_amount || '|' || payment_status from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000101'::uuid),
+  '400.00|partial',
   'ledger insert moves derived fields to 400.00/partial');
 
 select lives_ok(
@@ -140,9 +146,9 @@ select lives_ok(
   'second part-payment brings ledger sum to 999.99');
 
 select is(
-  $$select paid_amount || '|' || payment_status from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '999.99|partial'::text,
+  (select paid_amount || '|' || payment_status from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000101'::uuid),
+  '999.99|partial',
   'still partial below the total (999.99 < 1000.00)');
 
 select lives_ok(
@@ -154,9 +160,9 @@ select lives_ok(
   'exact-balance payment (paise-precise 0.01) accepted');
 
 select is(
-  $$select paid_amount || '|' || payment_status from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '1000.00|paid'::text,
+  (select paid_amount || '|' || payment_status from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000101'::uuid),
+  '1000.00|paid',
   'payment exactly equal to balance flips status to paid (PAY-boundary)');
 
 select throws_ok(
@@ -165,7 +171,7 @@ select throws_ok(
             'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, 0.01,
             '11111111-1111-1111-1111-111111111111'::uuid,
             'f0000000-0000-0000-0000-000000000009')$$,
-  'P0001', 'overpayment',
+  'P0001', 'payment exceeds invoice balance - total 1000.00, ledger sum 1000.01 (overpayment rejected)',
   'overpayment attempt rejected by the totals-maintainer guard');
 
 select throws_ok(
@@ -174,7 +180,7 @@ select throws_ok(
             'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'::uuid, 400.00,
             '11111111-1111-1111-1111-111111111111'::uuid,
             'f0000000-0000-0000-0000-000000000001')$$,
-  '23505', 'payments_business_operation_backstop',
+  '23505', 'duplicate key value violates unique constraint "payments_business_operation_backstop"',
   'duplicate sync delivery with same operation_id collapses at the idempotency backstop');
 
 select results_eq(
@@ -184,10 +190,10 @@ select results_eq(
   'exactly three ledger rows survived the rejected fourth + duplicate attempts');
 
 select is(
-  $$(select coalesce(sum(amount), 0) from public.payments
+  (select coalesce(sum(amount), 0) from public.payments
      where invoice_id = 'c0000000-0000-0000-0000-000000000101'::uuid)
-    = (select paid_amount from public.invoices
-       where id = 'c0000000-0000-0000-0000-000000000101'::uuid)$$,
+   = (select paid_amount from public.invoices
+      where id = 'c0000000-0000-0000-0000-000000000101'::uuid),
   true,
   'denormalized paid_amount reconciles with SUM-over-ledger (derived, not incremented)');
 
@@ -236,9 +242,9 @@ select throws_ok(
 set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 
 select is(
-  $$select paid_amount || '|' || payment_status from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '1000.00|paid'::text,
+  (select paid_amount || '|' || payment_status from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000101'::uuid),
+  '1000.00|paid',
   'system-maintained columns byte-identical after every direct client attempt');
 
 -- ---------------------------------------------------------------------------
@@ -255,9 +261,9 @@ select lives_ok(
   'payment against a DRAFT invoice (with seeded total) accepted - draft-or-issued path');
 
 select is(
-  $$select paid_amount || '|' || payment_status from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000102'::uuid$$,
-  '400.00|paid'::text,
+  (select paid_amount || '|' || payment_status from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000102'::uuid),
+  '400.00|paid',
   'draft totals maintenance crosses the same paid boundary (status-blind derivation)');
 
 set local request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
@@ -331,7 +337,7 @@ select throws_ok(
     values ('c0000000-0000-0000-0000-000000000101'::uuid,
             'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid, 10.00,
             'f0000000-0000-0000-0000-000000000008')$$,
-  '23503', 'payments_invoice_scope_fk',
+  '23503', 'insert or update on table "payments" violates foreign key constraint "payments_invoice_scope_fk"',
   'scope-mismatch forgery (own tenant key, A''s invoice) dies at the composite scope FK');
 
 select lives_ok(
@@ -343,16 +349,16 @@ select lives_ok(
   'positive control: staff B records a payment against OWN business B invoice');
 
 select is(
-  $$select paid_amount || '|' || payment_status from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000201'::uuid$$,
-  '300.00|partial'::text,
+  (select paid_amount || '|' || payment_status from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000201'::uuid),
+  '300.00|partial',
   'own-business payment moved B''s derived totals correctly');
 
 select is(
-  $$(select coalesce(sum(amount), 0) from public.payments
+  (select coalesce(sum(amount), 0) from public.payments
      where invoice_id = 'c0000000-0000-0000-0000-000000000201'::uuid)
-    = (select paid_amount from public.invoices
-       where id = 'c0000000-0000-0000-0000-000000000201'::uuid)$$,
+   = (select paid_amount from public.invoices
+      where id = 'c0000000-0000-0000-0000-000000000201'::uuid),
   true,
   'business B ledger reconciles with its denormalized paid_amount');
 
@@ -376,9 +382,9 @@ select lives_ok(
   'staff B adds a customer in own business (D-43)');
 
 select is(
-  $$select name from public.customers
-    where business_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid$$,
-  'Beta Enterprises'::text,
+  (select name from public.customers
+    where business_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid),
+  'Beta Enterprises',
   'customer insert landed');
 
 select lives_ok(
@@ -428,9 +434,9 @@ select lives_ok(
   'admin performs the IDENTICAL catalog insert successfully (D-44 other half)');
 
 select is(
-  $$select name from public.catalog_items
-    where business_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid$$,
-  'Consulting Hour'::text,
+  (select name from public.catalog_items
+    where business_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid),
+  'Consulting Hour',
   'admin catalog insert landed');
 
 set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
@@ -484,22 +490,22 @@ select lives_ok(
   'payment against ARCHIVED business invoice ACCEPTED (D-36 asymmetry - receivables trickle in)');
 
 select is(
-  $$select paid_amount || '|' || payment_status from public.invoices
-    where id = 'c0000000-0000-0000-0000-000000000301'::uuid$$,
-  '250.00|partial'::text,
+  (select paid_amount || '|' || payment_status from public.invoices
+    where id = 'c0000000-0000-0000-0000-000000000301'::uuid),
+  '250.00|partial',
   'archived-business payment moved derived totals (reports stay live)');
 
 select throws_ok(
   $$insert into public.invoices (business_id, fy, customer_name)
     values ('cccccccc-cccc-cccc-cccc-cccccccccccc'::uuid, '26-27', 'Too Late')$$,
-  'P0001', 'archived businesses',
+  'P0001', 'new documents are blocked for archived businesses (D-36)',
   'asymmetry contrast: NEW documents remain blocked for the archived business (trg_archive_guard)');
 
 set local request.jwt.claim.sub = '';
 
 select is(
-  $$(select coalesce(sum(amount), 0) from public.payments)
-    = (select sum(paid_amount) from public.invoices)$$,
+  (select coalesce(sum(amount), 0) from public.payments)
+    = (select sum(paid_amount) from public.invoices),
   true,
   'GLOBAL reconciliation: every ledger rupee is reflected in exactly one invoice''s paid_amount');
 
