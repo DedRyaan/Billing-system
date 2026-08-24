@@ -152,6 +152,62 @@ select results_eq(
   ARRAY[1::bigint],
   'probe: the reshaped USING conjunction evaluates TRUE in plain SELECT under the admin sub');
 
+-- TEMPORARY DIAGNOSTIC BLOCK (plan-count-neutral diag comments; REMOVE once
+-- root cause identified). Evidence rounds 32773019239/32773879465: stored
+-- qual verified present yet admin UPDATE candidacy stays zero across wrapped,
+-- arm-swapped and unwrapped predicate forms.
+reset role;
+set local request.jwt.claim.sub = '';
+select diag('DIAG_POLICIES: ' || coalesce((select string_agg(
+         policyname || ' [cmd=' || cmd || ' perm=' || permissive || ' roles=' || roles::text
+         || '] qual=' || encode(convert_to(coalesce(qual, ''), 'UTF8'), 'escape')
+         || ' wc=' || encode(convert_to(coalesce(with_check, ''), 'UTF8'), 'escape'),
+         E'\n#             '))
+       from pg_policies
+      where schemaname = 'public' and tablename = 'profiles'), 'NONE');
+select diag('DIAG_CURFN: definer=' || (select r.rolname from pg_proc f join pg_roles r on r.oid = f.proowner where f.proname = 'current_user_role')
+         || ' bypassrls=' || (select r.rolbypassrls::text from pg_proc f join pg_roles r on r.oid = f.proowner where f.proname = 'current_user_role'));
+select diag('DIAG_TABLE: owner=' || (select r.rolname from pg_class c join pg_roles r on r.oid = c.relowner where c.oid = 'public.profiles'::regclass)
+         || ' rls=' || (select relrowsecurity::text from pg_class where oid = 'public.profiles'::regclass)
+         || ' force=' || (select relforcerowsecurity::text from pg_class where oid = 'public.profiles'::regclass));
+select diag('DIAG_GRANTS: sel=' || has_table_privilege('authenticated', 'public.profiles', 'SELECT')::text
+         || ' upd=' || has_table_privilege('authenticated', 'public.profiles', 'UPDATE')::text);
+
+set local role authenticated;
+set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin
+select diag('DIAG_ROLE_UNDER_ADMIN_SUB=' || coalesce(public.current_user_role(), 'NULL'));
+select diag('DIAG_SELFVIS=' || (select count(*)::text from public.profiles));
+do $diag$
+declare
+  v_cnt bigint;
+  v_st  text;
+  v_msg text;
+begin
+  update public.profiles set full_name = full_name
+   where id = '70000000-0000-0000-0000-000000000004';
+  get diagnostics v_cnt = ROW_COUNT;
+  perform set_config('gsd.diag.staff_upd', 'rowcount=' || v_cnt::text, true);
+exception when others then
+  get stacked diagnostics v_st = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+  perform set_config('gsd.diag.staff_upd', 'EXC:' || v_st || ':' || v_msg, true);
+end $diag$;
+select diag('DIAG_UPD_STAFF_NOOP=' || coalesce(current_setting('gsd.diag.staff_upd', true), 'unset'));
+do $diag$
+declare
+  v_cnt bigint;
+  v_st  text;
+  v_msg text;
+begin
+  update public.profiles set full_name = full_name
+   where id = '70000000-0000-0000-0000-000000000003';
+  get diagnostics v_cnt = ROW_COUNT;
+  perform set_config('gsd.diag.peer_upd', 'rowcount=' || v_cnt::text, true);
+exception when others then
+  get stacked diagnostics v_st = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
+  perform set_config('gsd.diag.peer_upd', 'EXC:' || v_st || ':' || v_msg, true);
+end $diag$;
+select diag('DIAG_UPD_PEER_NOOP=' || coalesce(current_setting('gsd.diag.peer_upd', true), 'unset'));
+
 -- PERMANENT regression guard for the escalated defect: an admin-sub UPDATE
 -- must MATCH peer rows so the guard trigger can deny them LOUDLY. Asserted as
 -- throws_ok on Gate P's exact 42501+message - under the escalated shape defect
