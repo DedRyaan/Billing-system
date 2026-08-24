@@ -48,7 +48,7 @@
 
 begin;
 set search_path = public, extensions;
-select plan(50);
+select plan(53);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (superuser context): three tiers + one extra admin (the peer
@@ -133,8 +133,8 @@ select results_eq(
      from pg_policy
      where polrelid = 'public.profiles'::regclass
        and polname = 'profiles admin-manages-staff'$$,
-  ARRAY['wt'],
-  'DIAG (temporary): stored policy command+permissiveness (expect wt = permissive UPDATE)');
+  ARRAY['wtrue'],
+  'DIAG (temporary): stored policy command+permissiveness (expect wtrue = permissive UPDATE)');
 
 select results_eq(
   $$select count(*) from pg_policy
@@ -142,6 +142,28 @@ select results_eq(
        and polcmd in ('w', '*')$$,
   ARRAY[3::bigint],
   'DIAG (temporary): three permissive update/all policies exist on profiles');
+
+-- TEMPORARY sandbox: clone the exact reshaped-policy pair onto a temp table
+-- and compare behavior against the live profiles table. Discriminates a
+-- broken live POLICY OBJECT from engine/pattern semantics.
+create temp table sandbox_profiles (
+  id uuid primary key,
+  role text not null
+);
+alter table sandbox_profiles enable row level security;
+create policy sandbox_self_update on sandbox_profiles
+  for update to authenticated
+  using (id = (select auth.uid()))
+  with check (id = (select auth.uid()));
+create policy sandbox_reshaped on sandbox_profiles
+  for update to authenticated
+  using ((select public.current_user_role()) = 'admin' and role in ('staff', 'admin'))
+  with check ((select public.current_user_role()) = 'admin' and role = 'staff');
+insert into sandbox_profiles values
+  ('70000000-0000-0000-0000-000000000002', 'admin'),
+  ('70000000-0000-0000-0000-000000000003', 'admin'),
+  ('70000000-0000-0000-0000-000000000004', 'staff');
+
 set local role authenticated;
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
 
@@ -150,6 +172,14 @@ select results_eq(
   $$select (select public.current_user_role()) = 'admin'$$,
   ARRAY[true],
   'DIAG (temporary): USING premise arm-1 evaluates true under the admin sub');
+
+-- TEMPORARY: conjunction evaluated as a plain SELECT under the admin sub.
+select results_eq(
+  $$select count(*) from public.profiles
+     where (select public.current_user_role()) = 'admin'
+       and role = any(array['staff', 'admin'])$$,
+  ARRAY[1::bigint],
+  'DIAG (temporary): USING conjunction true for own row in plain SELECT under admin sub');
 
 -- TEMPORARY: update-returning reachability probe (rls_isolation convention) -
 -- expect 1 once the silence is defeated; have/want quantifies it meanwhile.
@@ -160,6 +190,22 @@ select results_eq(
      ) select count(*) from attempted$$,
   ARRAY[1::bigint],
   'DIAG (temporary): admin-sub update MATCHES the peer-admin row (reachability)');
+
+-- TEMPORARY: SAME update shape against the SANDBOX with identical policies.
+select results_eq(
+  $$with attempted as (
+       update sandbox_profiles set role = role where id = '70000000-0000-0000-0000-000000000003'
+       returning 1
+     ) select count(*) from attempted$$,
+  ARRAY[1::bigint],
+  'DIAG (temporary): sandbox twin of the reshaped policy MATCHES the peer row');
+select results_eq(
+  $$with attempted as (
+       update sandbox_profiles set role = role where id = '70000000-0000-0000-0000-000000000004'
+       returning 1
+     ) select count(*) from attempted$$,
+  ARRAY[1::bigint],
+  'DIAG (temporary): sandbox twin matches the STAFF row too');
 
 select throws_ok(
   $$update public.profiles set full_name = 'Renamed Peer' where id = '70000000-0000-0000-0000-000000000003'$$,
