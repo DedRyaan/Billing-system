@@ -502,7 +502,10 @@ select throws_ok(
   'P0001', 'new documents are blocked for archived businesses (D-36)',
   'asymmetry contrast: NEW documents remain blocked for the archived business (trg_archive_guard)');
 
-set local request.jwt.claim.sub = '';
+-- Reconcile from the superuser context: the session is still role
+-- `authenticated` here, and under FORCE RLS an empty-sub session matches no
+-- tenant rows, which would make both aggregates vacuous (0 = NULL -> false).
+reset role;
 
 select is(
   (select coalesce(sum(amount), 0) from public.payments)
