@@ -48,15 +48,15 @@
 --     pure value comparator that never executes SQL, and untyped literals
 --     crash polymorphic resolution ("could not determine polymorphic type").
 --
--- ESCALATED DEFECT (01-12 -> production scope): the stored 0007 reshape is
--- catalog-correct yet Postgres mis-evaluates that exact expression shape -
---   (SELECT <security-definer fn>()) = '<const>' AND <col> IN (<literals>)
--- inside FOR UPDATE USING - matching ZERO rows for admin callers, while the
--- identical predicate passes as a plain SELECT and equivalent rewrites (arm-
--- order swap, unwrapped call, length() arm) evaluate correctly on clean twin
--- tables. Consequence: admin->admin/STAFF direct updates filter silently, so
--- Gate P can never fire its designed loud 42501. Fix requires a policy-shape
--- migration (production scope); see 01-12-SUMMARY.md hypothesis ranking.
+-- ESCALATED DEFECT (01-12 -> production scope), RESOLVED BY 0013: admin
+-- updates on other users' rows matched ZERO rows silently, so Gate P could
+-- never fire its designed loud 42501. The 01-12 shape-defect hypothesis was a
+-- misdiagnosis: Postgres applies SELECT policies to UPDATE row scans when any
+-- exist for the caller, and admins held NO select reach to other users'
+-- profile rows - the candidacy set was empty regardless of predicate form.
+-- Migration 0013 supplies the missing read arm ("profiles admin-reads-managed")
+-- and reshapes the UPDATE policy; see the probe comments below and
+-- 01-14-SUMMARY for the full evidence chain.
 
 begin;
 set search_path = public, extensions;
@@ -140,81 +140,28 @@ select results_eq(
 set local role authenticated;
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
 
--- PERMANENT paradox pin (run 32769070295 evidence chain): the IDENTICAL
--- predicate evaluates TRUE as a plain SELECT under the admin sub while the
--- stored UPDATE policy built from it matches ZERO rows. This is the exact
--- engine-evaluation defect escalated to production scope - it must stay
--- green-honest: when the production reshape (0013) lands, this stays true.
+-- PERMANENT probe (supersedes the old "paradox pin"): the USING conjunction
+-- evaluates TRUE on a MANAGED row under the admin sub. The original form of
+-- this probe counted only the caller's OWN row - which was itself the final
+-- clue: Postgres applies SELECT policies to UPDATE row scans when any exist
+-- for the caller, so with no admin select reach the candidacy set was empty
+-- no matter what the UPDATE predicate said. That visibility rule - not any
+-- expression-shape defect - was the escalated root cause; 0013 Part 1b
+-- ("profiles admin-reads-managed") supplies the missing read arm.
 select results_eq(
   $$select count(*) from public.profiles
-     where (select public.current_user_role()) = 'admin'
-       and role = any(array['staff', 'admin'])$$,
+     where id = '70000000-0000-0000-0000-000000000004'
+       and role = 'staff'
+       and (select public.current_user_role()) = 'admin'$$,
   ARRAY[1::bigint],
-  'probe: the reshaped USING conjunction evaluates TRUE in plain SELECT under the admin sub');
-
--- TEMPORARY DIAGNOSTIC BLOCK (plan-count-neutral diag comments; REMOVE once
--- root cause identified). Evidence rounds 32773019239/32773879465: stored
--- qual verified present yet admin UPDATE candidacy stays zero across wrapped,
--- arm-swapped and unwrapped predicate forms.
-reset role;
-set local request.jwt.claim.sub = '';
-select diag('DIAG_POLICIES: ' || coalesce((
-       select string_agg(
-         policyname || ' [cmd=' || cmd || ' perm=' || permissive || ' roles=' || roles::text
-         || '] qual=' || encode(convert_to(coalesce(qual, ''), 'UTF8'), 'escape')
-         || ' wc=' || encode(convert_to(coalesce(with_check, ''), 'UTF8'), 'escape'),
-         E'\n#             ')
-       from pg_policies
-      where schemaname = 'public' and tablename = 'profiles'), 'NONE'));
-select diag('DIAG_CURFN: definer=' || (select r.rolname from pg_proc f join pg_roles r on r.oid = f.proowner where f.proname = 'current_user_role')
-         || ' bypassrls=' || (select r.rolbypassrls::text from pg_proc f join pg_roles r on r.oid = f.proowner where f.proname = 'current_user_role'));
-select diag('DIAG_TABLE: owner=' || (select r.rolname from pg_class c join pg_roles r on r.oid = c.relowner where c.oid = 'public.profiles'::regclass)
-         || ' rls=' || (select relrowsecurity::text from pg_class where oid = 'public.profiles'::regclass)
-         || ' force=' || (select relforcerowsecurity::text from pg_class where oid = 'public.profiles'::regclass));
-select diag('DIAG_GRANTS: sel=' || has_table_privilege('authenticated', 'public.profiles', 'SELECT')::text
-         || ' upd=' || has_table_privilege('authenticated', 'public.profiles', 'UPDATE')::text);
-
-set local role authenticated;
-set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin
-select diag('DIAG_ROLE_UNDER_ADMIN_SUB=' || coalesce(public.current_user_role(), 'NULL'));
-select diag('DIAG_SELFVIS=' || (select count(*)::text from public.profiles));
-do $diag$
-declare
-  v_cnt bigint;
-  v_st  text;
-  v_msg text;
-begin
-  update public.profiles set full_name = full_name
-   where id = '70000000-0000-0000-0000-000000000004';
-  get diagnostics v_cnt = ROW_COUNT;
-  perform set_config('gsd.diag.staff_upd', 'rowcount=' || v_cnt::text, true);
-exception when others then
-  get stacked diagnostics v_st = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
-  perform set_config('gsd.diag.staff_upd', 'EXC:' || v_st || ':' || v_msg, true);
-end $diag$;
-select diag('DIAG_UPD_STAFF_NOOP=' || coalesce(current_setting('gsd.diag.staff_upd', true), 'unset'));
-do $diag$
-declare
-  v_cnt bigint;
-  v_st  text;
-  v_msg text;
-begin
-  update public.profiles set full_name = full_name
-   where id = '70000000-0000-0000-0000-000000000003';
-  get diagnostics v_cnt = ROW_COUNT;
-  perform set_config('gsd.diag.peer_upd', 'rowcount=' || v_cnt::text, true);
-exception when others then
-  get stacked diagnostics v_st = RETURNED_SQLSTATE, v_msg = MESSAGE_TEXT;
-  perform set_config('gsd.diag.peer_upd', 'EXC:' || v_st || ':' || v_msg, true);
-end $diag$;
-select diag('DIAG_UPD_PEER_NOOP=' || coalesce(current_setting('gsd.diag.peer_upd', true), 'unset'));
+  'probe: the USING conjunction evaluates TRUE on a MANAGED row under the admin sub');
 
 -- PERMANENT regression guard for the escalated defect: an admin-sub UPDATE
 -- must MATCH peer rows so the guard trigger can deny them LOUDLY. Asserted as
--- throws_ok on Gate P's exact 42501+message - under the escalated shape defect
--- the UPDATE silently matches ZERO rows, raises nothing, and this assert fails
--- "caught: no exception"; once 0013's reshape makes the row reachable the
--- trigger fires its designed denial and this flips green. (The former
+-- throws_ok on Gate P's exact 42501+message - under the escalated visibility
+-- gap the UPDATE silently matches ZERO rows, raises nothing, and this assert
+-- fails "caught: no exception"; once 0013's read arm + reshape make the row
+-- reachable the trigger fires its designed denial and this flips green. (The former
 -- reachability CTE form could never flip: pgTAP results_eq opens the query on
 -- a bare cursor with no OTHERS handler, so post-reshape the raising UPDATE
 -- would abort the whole script instead of recording a result.)
