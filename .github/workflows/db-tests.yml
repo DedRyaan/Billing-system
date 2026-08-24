@@ -4,6 +4,11 @@ on: [push, pull_request]
 jobs:
   rls:
     runs-on: ubuntu-latest
+    # The SUPABASE_LOCAL_* values exported below are deterministic,
+    # runner-local development credentials emitted by `supabase status` for the
+    # ephemeral Docker stack booted in this job — not production secrets.
+    # Cloud service-role paths remain deliberately unwired: no cloud
+    # service-role secret exists in this repo by policy.
     steps:
       - uses: actions/checkout@v4
       - uses: supabase/setup-cli@v1
@@ -12,3 +17,50 @@ jobs:
       - run: supabase start
       - run: supabase db reset # apply all migrations fresh
       - run: supabase test db # non-zero exit on any assertion failure
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Export local stack credentials for the vitest stage (plan 01-13, gap G3)
+        id: local-stack-env
+        run: |
+          set -euo pipefail
+          # Parser tolerates both machine-readable shapes the CLI has shipped:
+          # JSON (`supabase status -o json`) and labeled text (`supabase status`).
+          # Only KEY NAMES are ever debug-printed here — never values; values
+          # flow exclusively into GITHUB_ENV and step logs must stay clean.
+          status_json="$(supabase status -o json 2>/dev/null || true)"
+          if [ -n "$status_json" ] && printf '%s' "$status_json" | jq -e 'type == "object"' >/dev/null 2>&1; then
+            echo "status shape: json keys: $(printf '%s' "$status_json" | jq -r 'keys | join(", ")')"
+            api_url="$(printf '%s' "$status_json" | jq -r '.API_URL // .["API URL"] // .api_url // empty')"
+            anon_key="$(printf '%s' "$status_json" | jq -r '.ANON_KEY // .["anon key"] // .anon_key // empty')"
+            service_key="$(printf '%s' "$status_json" | jq -r '.SERVICE_ROLE_KEY // .["service_role key"] // .service_role_key // empty')"
+          else
+            status_text="$(supabase status)"
+            echo "status shape: text keys: $(printf '%s\n' "$status_text" | sed -E 's/[=:].*$//' | paste -sd ',' -)"
+            api_url="$(printf '%s\n' "$status_text" | awk -F': ' 'tolower($1) == "api url" {print $2}')"
+            anon_key="$(printf '%s\n' "$status_text" | awk -F': ' 'tolower($1) ~ /^anon(ymous)? key$/ {print $2}')"
+            service_key="$(printf '%s\n' "$status_text" | awk -F': ' 'tolower($1) == "service_role key" {print $2}')"
+          fi
+          missing=""
+          [ -z "$api_url" ] && missing="$missing SUPABASE_LOCAL_URL"
+          [ -z "$anon_key" ] && missing="$missing SUPABASE_LOCAL_ANON_KEY"
+          [ -z "$service_key" ] && missing="$missing SUPABASE_LOCAL_SERVICE_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::could not extract from supabase status (see key list above):$missing"
+            exit 1
+          fi
+          {
+            echo "SUPABASE_LOCAL_URL=$api_url"
+            echo "SUPABASE_LOCAL_ANON_KEY=$anon_key"
+            echo "SUPABASE_LOCAL_SERVICE_KEY=$service_key"
+          } >> "$GITHUB_ENV"
+      - name: Wire-level proofs — SC-4 concurrency + live-cloud posture (scoped two-file run)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: pnpm vitest run tests/counters.rpc.test.ts tests/cloud-wire.test.ts
