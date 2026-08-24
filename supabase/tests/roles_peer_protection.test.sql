@@ -135,7 +135,10 @@ select results_eq(
        and tablename = 'profiles'
        and policyname = 'profiles admin-manages-staff'$$,
   ARRAY[true],
-  'probe: stored qual carries the reshape signature - helper=admin arm + staff/admin membership arm');
+   'probe: stored qual carries the reshape signature - helper=admin arm + staff/admin membership arm');
+
+set local role authenticated;
+set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
 
 -- PERMANENT paradox pin (run 32769070295 evidence chain): the IDENTICAL
 -- predicate evaluates TRUE as a plain SELECT under the admin sub while the
