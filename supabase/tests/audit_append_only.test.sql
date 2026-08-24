@@ -93,17 +93,17 @@ set local request.jwt.claim.sub = '';
 
 select throws_ok(
   $$update public.audit_log set action = 'rewritten by owner'$$,
-  'P0001', 'UPDATE on audit_log is append-only',
+  'P0001', 'UPDATE on audit_log is append-only (D-25)',
   'trigger layer refuses UPDATE even under elevated privileges, naming the operation (audit_no_update)');
 
 select throws_ok(
   $$delete from public.audit_log$$,
-  'P0001', 'DELETE on audit_log is append-only',
+  'P0001', 'DELETE on audit_log is append-only (D-25)',
   'trigger layer refuses DELETE under elevated privileges (audit_no_delete)');
 
 select throws_ok(
   $$truncate public.audit_log$$,
-  'P0001', 'TRUNCATE on audit_log is append-only',
+  'P0001', 'TRUNCATE on audit_log is append-only (D-25)',
   'trigger layer refuses TRUNCATE - bulk erasure is equally impossible (D-24 forever retention)');
 
 -- ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ select is(
        and a.target_table = 'profiles'
        and a.target_id = '22222222-2222-2222-2222-222222222222'
      order by a.id desc limit 1$$,
-  'profiles.update|staff|admin',
+  'profiles.update|staff|admin'::text,
   'role flip captured with before_val/after_val differing exactly on the role key (D-23/D-26)');
 
 -- ---------------------------------------------------------------------------
@@ -179,7 +179,7 @@ select results_eq(
 
 select is(
   $$(select public.health_check())$$,
-  'ok',
+  'ok'::text,
   'health_check RPC returns the constant ok - free-tier keep-alive target (D-39)');
 
 select * from finish();

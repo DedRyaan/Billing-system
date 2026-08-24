@@ -19,7 +19,11 @@
 
 begin;
 set search_path = public, extensions;
-select plan(23);
+-- plan(22), not 23: the file contains exactly twenty-two authored assertion
+-- calls (verified by counting the five assertion-call prefixes); the
+-- twenty-third was never written and a planned-23/ran-22 mismatch aborts the
+-- harness with "Bad plan" after all assertions pass.
+select plan(22);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (superuser context)
@@ -114,13 +118,13 @@ select lives_ok(
 select throws_ok(
   $$update public.businesses set prefix = 'NEWPX'
      where id = 'ccccccc1-0000-0000-0000-000000000001'::uuid$$,
-  'P0001', 'D-32',
+  'P0001', 'numbering identity is locked for FY 26-27 once numbers have been issued (D-32)',
   'prefix edit rejected once the current-FY counter has issued numbers (D-32)');
 
 select throws_ok(
   $$update public.businesses set number_format = 'seq'
      where id = 'ccccccc1-0000-0000-0000-000000000001'::uuid$$,
-  'P0001', 'D-32',
+  'P0001', 'numbering identity is locked for FY 26-27 once numbers have been issued (D-32)',
   'number_format edit equally locked after first issue (D-30/D-32)');
 
 -- ---------------------------------------------------------------------------

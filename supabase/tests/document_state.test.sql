@@ -116,7 +116,7 @@ select lives_ok(
 select is(
   $$select customer_name from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000002'::uuid$$,
-  'Renamed By Staff A',
+  'Renamed By Staff A'::text,
   'shared-pool edit actually landed despite different created_by');
 
 select lives_ok(
@@ -176,7 +176,7 @@ select results_eq(
 select is(
   $$select customer_name || '|' || status::text from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000001'::uuid$$,
-  'Original Buyer Pvt Ltd|issued',
+  'Original Buyer Pvt Ltd|issued'::text,
   'issued document byte-identical after every client attempt (T-1-09)');
 
 -- Clients cannot flip status out of draft even WITH a stolen-looking number:
@@ -293,7 +293,7 @@ select lives_ok(
 select is(
   $$select status::text from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000003'::uuid$$,
-  'issued',
+  'issued'::text,
   'draft became issued through the sanctioned path');
 
 -- D-16 PAIR: identical transition, only the identity differs.
@@ -318,7 +318,7 @@ select lives_ok(
 select is(
   $$select status::text from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000004'::uuid$$,
-  'voided',
+  'voided'::text,
   'document landed in voided state');
 
 -- Voided documents are frozen in every direction, every context.

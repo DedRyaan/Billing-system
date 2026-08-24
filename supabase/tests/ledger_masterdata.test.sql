@@ -66,13 +66,13 @@ insert into public.invoices
    customer_name, customer_gstin, supply_type, registration_type, total_amount, created_by)
 values
   ('c0000000-0000-0000-0000-000000000101', 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '26-27', 'issued', 1, now(),
-   'Buyer A Pvt Ltd', '29AAAAA0000A1Z0', 'intra_state', 'regular', 1000.00,
+   '55555555-5555-5555-5555-555555555555', 'Buyer A Pvt Ltd', '29AAAAA0000A1Z0', 'intra_state', 'regular', 1000.00,
    '55555555-5555-5555-5555-555555555555'),
   ('c0000000-0000-0000-0000-000000000201', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', '26-27', 'issued', 1, now(),
-   'Buyer B LLP',     '27BBBBB0000B1Z3', 'inter_state', 'regular', 800.00,
+   '55555555-5555-5555-5555-555555555555', 'Buyer B LLP',     '27BBBBB0000B1Z3', 'inter_state', 'regular', 800.00,
    '55555555-5555-5555-5555-555555555555'),
   ('c0000000-0000-0000-0000-000000000301', 'cccccccc-cccc-cccc-cccc-cccccccccccc', '26-27', 'issued', 1, now(),
-   'Buyer C Traders', '24CCCCC0000C1Z6', 'intra_state', 'regular', 600.00,
+   '55555555-5555-5555-5555-555555555555', 'Buyer C Traders', '24CCCCC0000C1Z6', 'intra_state', 'regular', 600.00,
    '55555555-5555-5555-5555-555555555555');
 
 -- Draft WITH a seeded non-zero total proves the draft-or-issued payment path
@@ -114,7 +114,7 @@ set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 select is(
   $$select paid_amount || '|' || payment_status from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '0|unpaid',
+  '0|unpaid'::text,
   'invoice with zero payments shows paid_amount 0 and status unpaid (PAY-empty)');
 
 select lives_ok(
@@ -128,7 +128,7 @@ select lives_ok(
 select is(
   $$select paid_amount || '|' || payment_status from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '400.00|partial',
+  '400.00|partial'::text,
   'ledger insert moves derived fields to 400.00/partial');
 
 select lives_ok(
@@ -142,7 +142,7 @@ select lives_ok(
 select is(
   $$select paid_amount || '|' || payment_status from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '999.99|partial',
+  '999.99|partial'::text,
   'still partial below the total (999.99 < 1000.00)');
 
 select lives_ok(
@@ -156,7 +156,7 @@ select lives_ok(
 select is(
   $$select paid_amount || '|' || payment_status from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '1000.00|paid',
+  '1000.00|paid'::text,
   'payment exactly equal to balance flips status to paid (PAY-boundary)');
 
 select throws_ok(
@@ -238,7 +238,7 @@ set local request.jwt.claim.sub = '11111111-1111-1111-1111-111111111111';
 select is(
   $$select paid_amount || '|' || payment_status from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000101'::uuid$$,
-  '1000.00|paid',
+  '1000.00|paid'::text,
   'system-maintained columns byte-identical after every direct client attempt');
 
 -- ---------------------------------------------------------------------------
@@ -257,7 +257,7 @@ select lives_ok(
 select is(
   $$select paid_amount || '|' || payment_status from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000102'::uuid$$,
-  '400.00|paid',
+  '400.00|paid'::text,
   'draft totals maintenance crosses the same paid boundary (status-blind derivation)');
 
 set local request.jwt.claim.sub = '55555555-5555-5555-5555-555555555555';
@@ -345,7 +345,7 @@ select lives_ok(
 select is(
   $$select paid_amount || '|' || payment_status from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000201'::uuid$$,
-  '300.00|partial',
+  '300.00|partial'::text,
   'own-business payment moved B''s derived totals correctly');
 
 select is(
@@ -378,7 +378,7 @@ select lives_ok(
 select is(
   $$select name from public.customers
     where business_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid$$,
-  'Beta Enterprises',
+  'Beta Enterprises'::text,
   'customer insert landed');
 
 select lives_ok(
@@ -430,7 +430,7 @@ select lives_ok(
 select is(
   $$select name from public.catalog_items
     where business_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid$$,
-  'Consulting Hour',
+  'Consulting Hour'::text,
   'admin catalog insert landed');
 
 set local request.jwt.claim.sub = '22222222-2222-2222-2222-222222222222';
@@ -486,7 +486,7 @@ select lives_ok(
 select is(
   $$select paid_amount || '|' || payment_status from public.invoices
     where id = 'c0000000-0000-0000-0000-000000000301'::uuid$$,
-  '250.00|partial',
+  '250.00|partial'::text,
   'archived-business payment moved derived totals (reports stay live)');
 
 select throws_ok(

@@ -142,6 +142,11 @@ select results_eq(
 -- ---------------------------------------------------------------------------
 
 reset role;
+-- Clear any JWT sub left by earlier role-switched blocks (same convention as
+-- audit_append_only's reset-role fixtures): without this, auth.uid() still
+-- resolves and guard_profile_privileged_columns treats this superuser fixture
+-- write as a client-context privileged-column change.
+set local request.jwt.claim.sub = '';
 
 update public.profiles
    set is_active = false
