@@ -393,15 +393,16 @@ select lives_ok(
       and name = 'Beta Enterprises'$$,
   'staff B EDITS the customer (D-43 edit half)');
 
-select results_eq(
-  $$with gone as (
-       delete from public.customers
-       where business_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid
-         and name = 'Beta Enterprises'
-       returning 1
-     ) select count(*) from gone$$,
-  ARRAY[0::bigint],
-  'staff DELETE of a customer removes ZERO rows (retention - soft-delete via is_active)');
+-- DELETE denial is enforced at the GRANTS layer (authenticated holds no
+-- DELETE privilege on customers), so the attempt dies loudly with 42501
+-- before RLS row filtering could ever return zero rows - same loud-denial
+-- shape the payments append-only proofs use above.
+select throws_ok(
+  $$delete from public.customers
+    where business_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'::uuid
+      and name = 'Beta Enterprises'$$,
+  '42501', null,
+  'staff DELETE of a customer denied at the grants layer (retention - soft-delete via is_active)');
 
 select results_eq(
   $$select count(*) from public.customers
