@@ -12,11 +12,22 @@
 -- stored shape matches zero rows freshly created, no triggers.
 --
 -- PART 1 reshapes the one live policy carrying that shape — "profiles
--- admin-manages-staff" (created by 0002, reshaped by 0007) — to the
--- sandbox-proven form: column term FIRST, definer call SECOND. TO role,
+-- admin-manages-staff" (created by 0002, reshaped by 0007) — to an
+-- equivalent that evaluates correctly in row-write contexts. TO role,
 -- PERMISSIVE semantics and comment intent are preserved byte-for-byte apart
--- from the predicate reorder; policies cannot be ALTERed, so this is a
+-- from the predicate rewrite; policies cannot be ALTERed, so this is a
 -- DROP + CREATE pair inside the CLI's single atomic per-migration transaction.
+--
+-- Round-1 addendum (CI 32773019239): the first cut of this migration used the
+-- sandbox-proven ARM-ORDER SWAP of the wrapped subquery form; CI proved the
+-- swap alone insufficient on the real multi-policy table (same 5-test failure
+-- set, stored qual verified swapped by the suite's signature pin). Refined
+-- root cause: profiles is the only table where two UPDATE-relevant policies
+-- share the identical "(select current_user_role())" sublink text (ours +
+-- "profiles super-admin-all"); single-instance-sublink tables and all
+-- one-policy twins evaluate fine. The shipped predicate therefore UNWRAPS
+-- the definer call into a bare function expression - no sublink, nothing to
+-- collide - a form the twin matrix independently proved working.
 --
 -- Sweep audit: no OTHER live policy carries the broken shape. Single-arm
 -- policies ("profiles super-admin-all", "businesses super-admin-insert/
@@ -52,20 +63,36 @@
 -- gain the coalesce wrap.
 
 -- ---------------------------------------------------------------------------
--- Part 1: reshape the mis-evaluated FOR UPDATE policy (sandbox-proven form)
+-- Part 1: reshape the mis-evaluated FOR UPDATE policy (sublink-free form)
 -- ---------------------------------------------------------------------------
 
 drop policy "profiles admin-manages-staff" on public.profiles;
 
+-- UNWRAPPED definer call (plain function expression, no scalar sublink).
+-- Evidence rounds:
+--   Round 1 (CI 32773019239): arm-order swap of the WRAPPED form still
+--     matched zero rows - identical failure set 5-7/9/16. profiles is the
+--     only table in the schema whose UPDATE-relevant policies share the
+--     identical sublink text "(select current_user_role())" with another
+--     policy ("profiles super-admin-all", FOR ALL covers UPDATE); every
+--     single-instance-sublink table evaluates fine, as did every sandbox
+--     twin carrying exactly one policy. The collision, not arm order alone,
+--     keeps the row candidacy dead.
+--   Remedy removes our policy from the sublink/InitPlan machinery entirely:
+--     a bare FuncExpr cannot share or claim an InitPlan parameter. The twin
+--     matrix independently proved the unwrapped-call rewrite evaluates
+--     correctly (01-12 matrix arm 2). Per-row evaluation also strengthens
+--     D-20 instant revocation (is_active re-read per candidate row instead
+--     of a once-per-statement cached value).
 create policy "profiles admin-manages-staff" on public.profiles
   for update to authenticated
   using (
     role in ('staff', 'admin')
-    and (select public.current_user_role()) = 'admin'
+    and public.current_user_role() = 'admin'
   )
   with check (
     role = 'staff'
-    and (select public.current_user_role()) = 'admin'
+    and public.current_user_role() = 'admin'
   );
 
 -- ---------------------------------------------------------------------------
