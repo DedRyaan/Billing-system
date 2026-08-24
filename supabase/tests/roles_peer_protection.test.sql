@@ -113,16 +113,16 @@ select results_eq(
 
 -- TEMPORARY diagnostic (decision-tree branch: probes green but admin-sub
 -- updates still match zero rows): dump the ACTUAL stored predicate so the TAP
--- have/want output prints pg_policies.qual verbatim into the CI log. Explicit
--- COLLATE required: qual derives an indeterminate collation (run 32763725256
--- crashed pgTAP's internal comparison without it). Converted to a permanent
--- exact-match pin once the stored shape is read.
+-- have/want output prints pg_policies.qual verbatim into the CI log. qual is
+-- escape-encoded through convert_to: its raw collation derivation crashes
+-- pgTAP's internal comparison (runs 32763725256/32764405453) - encoding
+-- yields clean default-collation ASCII while preserving the full predicate.
 select results_eq(
-  $$select qual collate "C" from pg_policies
+  $$select encode(convert_to(qual, 'UTF8'), 'escape') from pg_policies
      where schemaname = 'public'
        and tablename = 'profiles'
        and policyname = 'profiles admin-manages-staff'$$,
-  ARRAY['__diag-round-B: prints actual stored qual on mismatch__'::text],
+  ARRAY['__diag-round-C: prints actual stored qual on mismatch__'::text],
   'DIAG (temporary): dump stored qual of profiles admin-manages-staff');
 set local role authenticated;
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
