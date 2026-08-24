@@ -48,7 +48,7 @@
 
 begin;
 set search_path = public, extensions;
-select plan(46);
+select plan(50);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (superuser context): three tiers + one extra admin (the peer
@@ -111,21 +111,55 @@ select results_eq(
   ARRAY[1::bigint],
   'probe: the reshaped ''profiles admin-manages-staff'' policy is present - pins the missing-policy hypothesis');
 
--- TEMPORARY diagnostic (decision-tree branch: probes green but admin-sub
--- updates still match zero rows): dump the ACTUAL stored predicate so the TAP
--- have/want output prints pg_policies.qual verbatim into the CI log. qual is
--- escape-encoded through convert_to: its raw collation derivation crashes
--- pgTAP's internal comparison (runs 32763725256/32764405453) - encoding
--- yields clean default-collation ASCII while preserving the full predicate.
+-- PERMANENT pin: the stored predicate carries the 0007 reshape signature.
+-- Containment form (verbatim qual captured in run 32764876499) tolerates
+-- deparse spacing while failing loudly on any semantic rewrite.
 select results_eq(
-  $$select encode(convert_to(qual, 'UTF8'), 'escape') from pg_policies
+  $$select (position('current_user_role' in qual) > 0)
+        and (position('=''admin''::text' in qual) > 0)
+        and (position('ANY (ARRAY[''staff''::text, ''admin''::text])' in qual) > 0)
+     from pg_policies
      where schemaname = 'public'
        and tablename = 'profiles'
        and policyname = 'profiles admin-manages-staff'$$,
-  ARRAY['__diag-round-C: prints actual stored qual on mismatch__'::text],
-  'DIAG (temporary): dump stored qual of profiles admin-manages-staff');
+  ARRAY[true],
+  'probe: stored qual carries the reshape signature - helper=admin arm + staff/admin membership arm');
+
+-- TEMPORARY Branch-B discriminators: separate stored-shape truth from runtime
+-- behavior (probes green + correct qual yet admin-sub updates match zero rows,
+-- run 32764876499). Remove once the silence root cause is closed.
+select results_eq(
+  $$select coalesce(polcmd, '*') || polpermissive::text
+     from pg_policy
+     where polrelid = 'public.profiles'::regclass
+       and polname = 'profiles admin-manages-staff'$$,
+  ARRAY['wt'],
+  'DIAG (temporary): stored policy command+permissiveness (expect wt = permissive UPDATE)');
+
+select results_eq(
+  $$select count(*) from pg_policy
+     where polrelid = 'public.profiles'::regclass
+       and polcmd in ('w', '*')$$,
+  ARRAY[3::bigint],
+  'DIAG (temporary): three permissive update/all policies exist on profiles');
 set local role authenticated;
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
+
+-- TEMPORARY: re-evaluate the USING premise exactly as the stored policy does.
+select results_eq(
+  $$select (select public.current_user_role()) = 'admin'$$,
+  ARRAY[true],
+  'DIAG (temporary): USING premise arm-1 evaluates true under the admin sub');
+
+-- TEMPORARY: update-returning reachability probe (rls_isolation convention) -
+-- expect 1 once the silence is defeated; have/want quantifies it meanwhile.
+select results_eq(
+  $$with attempted as (
+       update public.profiles set full_name = full_name where id = '70000000-0000-0000-0000-000000000003'
+       returning 1
+     ) select count(*) from attempted$$,
+  ARRAY[1::bigint],
+  'DIAG (temporary): admin-sub update MATCHES the peer-admin row (reachability)');
 
 select throws_ok(
   $$update public.profiles set full_name = 'Renamed Peer' where id = '70000000-0000-0000-0000-000000000003'$$,
