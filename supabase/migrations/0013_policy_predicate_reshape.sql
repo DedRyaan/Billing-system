@@ -1,41 +1,55 @@
 -- Migration 0013: policy predicate reshape + NULL-safe lifecycle guards
 -- (Plan 01-14 gap closure — closes the D-11 escalation)
 --
--- EVIDENCE BASE (01-12-SUMMARY.md; terminal CI run 32770278953, roles 43/48):
--- Postgres mis-evaluates the exact expression shape
---   (SELECT <security-definer fn>()) = '<const>' AND <col> IN (<literals>)
--- inside FOR UPDATE USING. The stored policy is catalog-correct yet matches
--- ZERO rows for admin callers, so Gate P's designed loud 42501 was unreachable
--- and even admin->staff edits filtered silently. The sandbox-twin matrix
--- (runs 32768298424 / 32769070295) isolated the defect to SHAPE: the
--- arm-order swap evaluates correctly on clean twin tables while the exact
--- stored shape matches zero rows freshly created, no triggers.
+-- EVIDENCE BASE (01-12-SUMMARY.md; terminal run 32770278953, roles 43/48;
+-- closure rounds 32773019239 / 32773879465 / 32774682377 / 32775072267):
 --
--- PART 1 reshapes the one live policy carrying that shape — "profiles
--- admin-manages-staff" (created by 0002, reshaped by 0007) — to an
--- equivalent that evaluates correctly in row-write contexts. TO role,
--- PERMISSIVE semantics and comment intent are preserved byte-for-byte apart
--- from the predicate rewrite; policies cannot be ALTERed, so this is a
--- DROP + CREATE pair inside the CLI's single atomic per-migration transaction.
+-- THE ESCALATED "ENGINE-EVALUATION DEFECT" WAS A MISDIAGNOSIS - RESOLVED:
+-- Postgres applies any SELECT policies that exist for the caller TO THE ROW
+-- SCAN of UPDATE/DELETE statements IN ADDITION to the UPDATE policy's USING
+-- (CREATE POLICY docs: when SELECT policies exist for a role, rows they do
+-- not make visible are invisible to that role's UPDATE/DELETE too). profiles
+-- granted admins NO select reach to other users' rows ("profiles self-read"
+-- = own row; "profiles super-admin-all" = super only), so every
+-- admin->others UPDATE matched zero candidates REGARDLESS of the UPDATE
+-- predicate's expression shape. Gate P's loud 42501 was unreachable because
+-- candidate rows never existed - not because any predicate mis-evaluated.
 --
--- Round-1 addendum (CI 32773019239): the first cut of this migration used the
--- sandbox-proven ARM-ORDER SWAP of the wrapped subquery form; CI proved the
--- swap alone insufficient on the real multi-policy table (same 5-test failure
--- set, stored qual verified swapped by the suite's signature pin). Refined
--- root cause: profiles is the only table where two UPDATE-relevant policies
--- share the identical "(select current_user_role())" sublink text (ours +
--- "profiles super-admin-all"); single-instance-sublink tables and all
--- one-policy twins evaluate fine. The shipped predicate therefore UNWRAPS
--- the definer call into a bare function expression - no sublink, nothing to
--- collide - a form the twin matrix independently proved working.
+-- Why nine 01-12 CI runs plus two reshape rounds missed it: the sandbox twins
+-- were single-policy tables WITHOUT a SELECT policy layer, so their UPDATEs
+-- scanned unfiltered and every equivalent rewrite "passed"; production
+-- profiles carries four policies across three command types. Round-3 runtime
+-- diagnostics (run 32775072267) nailed it: stored qual catalog-perfect,
+-- helper resolves 'admin' under the admin sub, grants present, FORCE flags
+-- normal - yet noop UPDATEs on BOTH staff and peer-admin targets returned
+-- ROW_COUNT=0 with no exception. Schema-wide correlation confirms the
+-- mechanism: every functioning others'-row UPDATE policy in this codebase
+-- sits on a table whose members hold a covering SELECT policy
+-- (invoices/customers/catalog/business_members), and the only working
+-- others'-row path on profiles belongs to super_admin precisely because
+-- "super-admin-all" is FOR ALL (covers SELECT too).
 --
--- Sweep audit: no OTHER live policy carries the broken shape. Single-arm
--- policies ("profiles super-admin-all", "businesses super-admin-insert/
--- update", "audit admins-read") match the proven-working constant-only twin;
--- catalog/document/membership policies pair subquery arms with each other or
--- place bare columns second ("invoices members-insert-drafts" et al.) and are
--- exercised green by their suites on every run. History files are untouched —
--- this forward migration supersedes the stored shape.
+-- PART 1 therefore ships TWO pieces:
+--   1a. the reshaped "profiles admin-manages-staff" UPDATE policy (kept in
+--       sublink-free unwrapped-call form - equivalent to the original
+--       intent, simpler to reason about), and
+--   1b. the MISSING READ ARM "profiles admin-reads-managed": admins gain
+--       SELECT on staff and fellow-admin rows - exactly the set the manage
+--       contract already covers, nothing more (super_admin rows stay
+--       invisible to admins; Gate P keeps protecting them). Without 1b the
+--       reshape is inert by standard visibility semantics and D-11's
+--       loud-denial contract stays dead. This read surface is also the
+--       minimum Phase 3 needs to list/manage staff in a UI.
+--
+-- TO role and PERMISSIVE semantics are preserved; policies cannot be ALTERed,
+-- so Part 1a is a DROP + CREATE pair inside the CLI's single atomic
+-- per-migration transaction.
+--
+-- Sweep audit note retained from earlier rounds: no other live policy carries
+-- the originally-suspected conjunction shape, and none needs one - their
+-- tables grant members covering SELECT visibility, which is why they always
+-- evaluated "fine". History files are untouched; this forward migration
+-- supersedes the stored shapes.
 --
 -- PART 2 closes the demonstrated NULL-swallowing bypass in lifecycle RPC
 -- denial paths (01-12 production finding 2, shown live via vacuous passes in
@@ -63,27 +77,16 @@
 -- gain the coalesce wrap.
 
 -- ---------------------------------------------------------------------------
--- Part 1: reshape the mis-evaluated FOR UPDATE policy (sublink-free form)
+-- Part 1: reshape the FOR UPDATE policy + add the missing SELECT visibility
+-- arm (sublink-free form; see header for the resolved root cause)
 -- ---------------------------------------------------------------------------
 
 drop policy "profiles admin-manages-staff" on public.profiles;
 
--- UNWRAPPED definer call (plain function expression, no scalar sublink).
--- Evidence rounds:
---   Round 1 (CI 32773019239): arm-order swap of the WRAPPED form still
---     matched zero rows - identical failure set 5-7/9/16. profiles is the
---     only table in the schema whose UPDATE-relevant policies share the
---     identical sublink text "(select current_user_role())" with another
---     policy ("profiles super-admin-all", FOR ALL covers UPDATE); every
---     single-instance-sublink table evaluates fine, as did every sandbox
---     twin carrying exactly one policy. The collision, not arm order alone,
---     keeps the row candidacy dead.
---   Remedy removes our policy from the sublink/InitPlan machinery entirely:
---     a bare FuncExpr cannot share or claim an InitPlan parameter. The twin
---     matrix independently proved the unwrapped-call rewrite evaluates
---     correctly (01-12 matrix arm 2). Per-row evaluation also strengthens
---     D-20 instant revocation (is_active re-read per candidate row instead
---     of a once-per-statement cached value).
+-- 1a. UNWRAPPED definer call (plain function expression, no scalar sublink).
+-- Kept from round 2: equivalent semantics, simpler to reason about, and
+-- per-row evaluation strengthens D-20 instant revocation (is_active re-read
+-- per candidate row).
 create policy "profiles admin-manages-staff" on public.profiles
   for update to authenticated
   using (
@@ -92,6 +95,20 @@ create policy "profiles admin-manages-staff" on public.profiles
   )
   with check (
     role = 'staff'
+    and public.current_user_role() = 'admin'
+  );
+
+-- 1b. THE READ ARM WITHOUT WHICH 1a IS INERT: UPDATE candidacy requires the
+-- target rows to be SELECT-visible to the caller whenever SELECT policies
+-- exist for that caller (standard Postgres multi-policy rule - the mechanism
+-- the 01-12 escalation misattributed to expression shape). Admins may now
+-- READ exactly what they may MANAGE: staff and fellow-admin rows. Super_admin
+-- rows remain invisible to admins (Gate P's protection surface is unchanged);
+-- super_admin keeps full reach via "super-admin-all" (FOR ALL covers SELECT).
+create policy "profiles admin-reads-managed" on public.profiles
+  for select to authenticated
+  using (
+    role in ('staff', 'admin')
     and public.current_user_role() = 'admin'
   );
 
