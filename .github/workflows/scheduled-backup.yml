@@ -23,6 +23,8 @@
 # Client version rule: postgresql-client-17 from PGDG must match the server's
 # major (supabase/config.toml [db] major_version = 17); an older client refuses
 # or mis-dumps newer servers.
+# (Commit re-pushed post-registration-miss: GitHub indexed only db-tests.yml
+# from the repo's first-ever push; this line forces re-registration.)
 name: scheduled-backup
 
 on:

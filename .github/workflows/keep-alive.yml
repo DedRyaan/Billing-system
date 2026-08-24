@@ -12,6 +12,8 @@
 # Alerting: GitHub's default "workflow failed" email notification to
 # watchers/author covers the red-run alert requirement — no extra integration
 # needed while the repo has few collaborators.
+# (Commit re-pushed post-registration-miss: GitHub indexed only db-tests.yml
+# from the repo's first-ever push; this line forces re-registration.)
 name: keep-alive
 
 on:
