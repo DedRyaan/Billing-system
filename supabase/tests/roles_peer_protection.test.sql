@@ -48,7 +48,7 @@
 
 begin;
 set search_path = public, extensions;
-select plan(45);
+select plan(46);
 
 -- ---------------------------------------------------------------------------
 -- Fixtures (superuser context): three tiers + one extra admin (the peer
@@ -110,17 +110,29 @@ select results_eq(
        and policyname = 'profiles admin-manages-staff'$$,
   ARRAY[1::bigint],
   'probe: the reshaped ''profiles admin-manages-staff'' policy is present - pins the missing-policy hypothesis');
+
+-- TEMPORARY Round-A diagnostic (decision-tree branch: probes green but
+-- admin-sub updates still match zero rows): dump the ACTUAL stored predicate
+-- so the TAP have/want output prints pg_policies.qual verbatim into the CI
+-- log. Converted to a permanent exact-match pin once the stored shape is read.
+select results_eq(
+  $$select qual from pg_policies
+     where schemaname = 'public'
+       and tablename = 'profiles'
+       and policyname = 'profiles admin-manages-staff'$$,
+  ARRAY['__diag-round-A: prints actual stored qual on mismatch__'::text],
+  'DIAG (temporary): dump stored qual of profiles admin-manages-staff');
 set local role authenticated;
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
 
 select throws_ok(
   $$update public.profiles set full_name = 'Renamed Peer' where id = '70000000-0000-0000-0000-000000000003'$$,
-  '42501', 'peer-protected',
+  '42501', 'gsd-guard: admins are peer-protected - only super_admin manages admins D-11',
   'admin editing another ADMIN''s row raises 42501 - management of admins belongs to super_admin alone (D-11)');
 
 select throws_ok(
   $$update public.profiles set role = 'staff' where id = '70000000-0000-0000-0000-000000000003'$$,
-  '42501', 'peer-protected',
+  '42501', 'gsd-guard: admins are peer-protected - only super_admin manages admins D-11',
   'admin DEMOTING another admin dies at the guard trigger too - forged role changes get no quieter path');
 
 select lives_ok(
@@ -146,7 +158,7 @@ select lives_ok(
 
 select throws_ok(
   $$update public.profiles set role = 'staff' where id = '70000000-0000-0000-0000-000000000003'$$,
-  'P0001', 'privileged columns',
+  'P0001', 'gsd-guard: privileged columns role may only change through lifecycle RPCs',
   'even super_admin cannot flip roles by DIRECT UPDATE - lifecycle flows through audited RPCs only');
 
 -- ---------------------------------------------------------------------------
@@ -161,19 +173,19 @@ select lives_ok(
 
 select throws_ok(
   $$update public.profiles set role = 'super_admin' where id = '70000000-0000-0000-0000-000000000004'$$,
-  'P0001', 'privileged columns',
+  'P0001', 'gsd-guard: privileged columns role may only change through lifecycle RPCs',
   'staff self-promotion to super_admin dies in the trigger even over a valid session (T-1-21)');
 
 select throws_ok(
   $$update public.profiles set is_active = false where id = '70000000-0000-0000-0000-000000000004'$$,
-  'P0001', 'privileged columns',
+  'P0001', 'gsd-guard: privileged columns is_active may only change through lifecycle RPCs',
   'staff cannot self-deactivate by direct UPDATE - lifecycle is RPC-exclusive');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin
 
 select throws_ok(
   $$update public.profiles set role = 'super_admin' where id = '70000000-0000-0000-0000-000000000002'$$,
-  'P0001', 'privileged columns',
+  'P0001', 'gsd-guard: privileged columns role may only change through lifecycle RPCs',
   'admin self-promotion dies identically - nobody forges their way up');
 
 -- ---------------------------------------------------------------------------
@@ -182,7 +194,7 @@ select throws_ok(
 
 select throws_ok(
   $$update public.profiles set is_active = false where id = '70000000-0000-0000-0000-000000000004'$$,
-  'P0001', 'privileged columns',
+  'P0001', 'gsd-guard: privileged columns is_active may only change through lifecycle RPCs',
   'admin flipping staff is_active DIRECTLY dies too - deactivation rides the audited RPC');
 
 select lives_ok(
@@ -211,14 +223,14 @@ select results_eq(
 
 select throws_ok(
   $$select public.deactivate_staff_account('70000000-0000-0000-0000-000000000003')$$,
-  '42501', 'may only deactivate staff accounts',
+  '42501', 'deactivate_staff_account admins may only deactivate staff accounts D-11 D-17',
   'RPC authorization upholds peer protection: admin cannot DEACTIVATE another admin (D-11/D-17)');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000001'; -- super_admin
 
 select throws_ok(
   $$select public.deactivate_staff_account('70000000-0000-0000-0000-000000000001')$$,
-  'P0001', 'cannot deactivate your own account',
+  'P0001', 'deactivate_staff_account cannot deactivate your own account',
   'even super_admin cannot deactivate themselves - no last-admin self-lockout');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin
@@ -242,7 +254,7 @@ set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000004'; -- sta
 
 select throws_ok(
   $$select public.unlock_account_profile('70000000-0000-0000-0000-000000000001')$$,
-  '42501', 'requires an admin or super_admin caller',
+  '42501', 'unlock_account_profile requires an admin or super_admin caller D-28 D-29',
   'staff cannot drive the unlock RPC (D-28 unlock belongs to admins)');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin
@@ -273,19 +285,19 @@ set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- adm
 
 select throws_ok(
   $$select public.confirm_super_admin_transfer()$$,
-  'P0001', 'no pending transfer initiation',
+  'P0001', 'confirm_super_admin_transfer no pending transfer initiation - two-step confirmation requires initiate first D-14',
   'confirm WITHOUT prior initiation fails - promotion needs the deliberate first step');
 
 select throws_ok(
   $$select public.initiate_super_admin_transfer('70000000-0000-0000-0000-000000000001')$$,
-  '42501', 'only super_admin may initiate',
+  '42501', 'initiate_super_admin_transfer only super_admin may initiate the transfer D-14',
   'a regular admin cannot initiate the transfer');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000001'; -- super_admin
 
 select throws_ok(
   $$select public.initiate_super_admin_transfer('70000000-0000-0000-0000-000000000001')$$,
-  'P0001', 'cannot transfer to yourself',
+  'P0001', 'initiate_super_admin_transfer cannot transfer to yourself',
   'initiating to self is refused');
 
 select lives_ok(
@@ -296,7 +308,7 @@ set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000004'; -- sta
 
 select throws_ok(
   $$select public.confirm_super_admin_transfer()$$,
-  '42501', 'not the pending transfer target',
+  '42501', 'confirm_super_admin_transfer caller is not the pending transfer target',
   'step 2 refused for a NON-target caller');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000003'; -- Admin Two
@@ -341,7 +353,7 @@ set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000001';
 
 select throws_ok(
   $$select public.confirm_super_admin_transfer()$$,
-  'P0001', 'confirmation window expired',
+  'P0001', 'confirm_super_admin_transfer confirmation window expired - initiation valid for one hour',
   'confirmation AFTER the one-hour window fails (deliberate handover, not a race)');
 
 -- ---------------------------------------------------------------------------
@@ -373,16 +385,18 @@ select results_eq(
   ARRAY[1::bigint],
   'created business actually persisted');
 
+set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin
+
 select throws_ok(
   $$select public.archive_business('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1')$$,
-  '42501', 'restricted to super_admin',
+  '42501', 'archive_business is restricted to super_admin D-37',
   'admin cannot ARCHIVE a business (D-37 matches creation rights)');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000004'; -- staff
 
 select throws_ok(
   $$select public.archive_business('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaa1')$$,
-  '42501', 'restricted to super_admin',
+  '42501', 'archive_business is restricted to super_admin D-37',
   'staff cannot archive either (D-37)');
 
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000003'; -- super_admin
