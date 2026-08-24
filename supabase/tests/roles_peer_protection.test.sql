@@ -152,17 +152,19 @@ select results_eq(
   ARRAY[1::bigint],
   'probe: the reshaped USING conjunction evaluates TRUE in plain SELECT under the admin sub');
 
--- PERMANENT regression guard for the escalated defect (rls_isolation CTE
--- convention): an admin-sub UPDATE must MATCH peer rows so the guard trigger
--- can deny them LOUDLY. Red (have 0) until migration 0013 fixes the policy
--- shape; flips green exactly when the loud-denial contract is restored.
-select results_eq(
-  $$with attempted as (
-       update public.profiles set full_name = full_name where id = '70000000-0000-0000-0000-000000000003'
-       returning 1
-     ) select count(*) from attempted$$,
-  ARRAY[1::bigint],
-  'regression guard: admin-sub update REACHES the peer-admin row so Gate P can deny it loudly (escalated defect, see 01-12-SUMMARY)');
+-- PERMANENT regression guard for the escalated defect: an admin-sub UPDATE
+-- must MATCH peer rows so the guard trigger can deny them LOUDLY. Asserted as
+-- throws_ok on Gate P's exact 42501+message - under the escalated shape defect
+-- the UPDATE silently matches ZERO rows, raises nothing, and this assert fails
+-- "caught: no exception"; once 0013's reshape makes the row reachable the
+-- trigger fires its designed denial and this flips green. (The former
+-- reachability CTE form could never flip: pgTAP results_eq opens the query on
+-- a bare cursor with no OTHERS handler, so post-reshape the raising UPDATE
+-- would abort the whole script instead of recording a result.)
+select throws_ok(
+  $$update public.profiles set full_name = full_name where id = '70000000-0000-0000-0000-000000000003'$$,
+  '42501', 'gsd-guard: admins are peer-protected - only super_admin manages admins D-11',
+  'regression guard: admin-sub update REACHES the peer-admin row and Gate P denies it LOUDLY (red until 0013 reshapes the policy, see 01-12-SUMMARY)');
 
 select throws_ok(
   $$update public.profiles set full_name = 'Renamed Peer' where id = '70000000-0000-0000-0000-000000000003'$$,
