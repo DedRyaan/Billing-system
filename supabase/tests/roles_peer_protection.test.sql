@@ -163,6 +163,8 @@ insert into sandbox_profiles values
   ('70000000-0000-0000-0000-000000000002', 'admin'),
   ('70000000-0000-0000-0000-000000000003', 'admin'),
   ('70000000-0000-0000-0000-000000000004', 'staff');
+-- Temp tables inherit no default grants for authenticated: mirror the real grant.
+grant select, update on pg_temp.sandbox_profiles to authenticated;
 
 set local role authenticated;
 set local request.jwt.claim.sub = '70000000-0000-0000-0000-000000000002'; -- admin restored
