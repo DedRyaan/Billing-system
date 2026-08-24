@@ -158,13 +158,14 @@ select results_eq(
 -- arm-swapped and unwrapped predicate forms.
 reset role;
 set local request.jwt.claim.sub = '';
-select diag('DIAG_POLICIES: ' || coalesce((select string_agg(
+select diag('DIAG_POLICIES: ' || coalesce((
+       select string_agg(
          policyname || ' [cmd=' || cmd || ' perm=' || permissive || ' roles=' || roles::text
          || '] qual=' || encode(convert_to(coalesce(qual, ''), 'UTF8'), 'escape')
          || ' wc=' || encode(convert_to(coalesce(with_check, ''), 'UTF8'), 'escape'),
-         E'\n#             '))
+         E'\n#             ')
        from pg_policies
-      where schemaname = 'public' and tablename = 'profiles'), 'NONE');
+      where schemaname = 'public' and tablename = 'profiles'), 'NONE'));
 select diag('DIAG_CURFN: definer=' || (select r.rolname from pg_proc f join pg_roles r on r.oid = f.proowner where f.proname = 'current_user_role')
          || ' bypassrls=' || (select r.rolbypassrls::text from pg_proc f join pg_roles r on r.oid = f.proowner where f.proname = 'current_user_role'));
 select diag('DIAG_TABLE: owner=' || (select r.rolname from pg_class c join pg_roles r on r.oid = c.relowner where c.oid = 'public.profiles'::regclass)
