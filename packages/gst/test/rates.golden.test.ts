@@ -3,7 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   CURRENT_SLABS_BPS,
   SLAB_EFFECTIVE_FROM,
-  assertCatalogRate,
   bpsToPercentString,
   isLegalSlabRate,
   percentStringToBps,
@@ -18,7 +17,7 @@ import {
  * reject despite having been legal before the amendment: the engine carries
  * NO historical bands (D-53) — snapshots are frozen data.
  */
-describe('isLegalSlabRate / assertCatalogRate — current slab set passes', () => {
+describe('isLegalSlabRate — current slab set passes', () => {
   it.each([
     ['nil/exempt', 0n],
     ['0.25%', 25n],
@@ -29,7 +28,6 @@ describe('isLegalSlabRate / assertCatalogRate — current slab set passes', () =
     ['40%', 4000n],
   ])('%s (%s bps) is a legal catalog rate', (_label, bps) => {
     expect(isLegalSlabRate(bps)).toEqual({ ok: true });
-    expect(assertCatalogRate(bps)).toEqual({ ok: true });
   });
 });
 
@@ -42,7 +40,6 @@ describe('abolished and never-a-slab values reject with NOT_A_CURRENT_SLAB', () 
     ['26 bps — above the 0.25% slab', 26n],
   ])('%s rejects', (_label, bps) => {
     expect(isLegalSlabRate(bps)).toEqual({ ok: false, reason: 'NOT_A_CURRENT_SLAB' });
-    expect(assertCatalogRate(bps)).toEqual({ ok: false, reason: 'NOT_A_CURRENT_SLAB' });
   });
 });
 

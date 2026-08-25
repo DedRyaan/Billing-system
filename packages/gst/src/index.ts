@@ -17,7 +17,6 @@ export {
   CURRENT_SLABS_BPS,
   SLAB_EFFECTIVE_FROM,
   isLegalSlabRate,
-  assertCatalogRate,
   percentStringToBps,
   bpsToPercentString,
 } from './rates';

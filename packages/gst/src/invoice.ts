@@ -15,7 +15,7 @@
  */
 
 import { divRoundHalfUp, lineBasePaise, roundOffPaise } from './money';
-import { assertCatalogRate } from './rates';
+import { isLegalSlabRate } from './rates';
 import type { TaxHead } from './place-of-supply';
 
 export type { TaxHead } from './place-of-supply';
@@ -117,7 +117,7 @@ export function computeLine(
   }
 
   if (!isNonTaxable(line.character)) {
-    const gate = assertCatalogRate(line.gstRateBps);
+    const gate = isLegalSlabRate(line.gstRateBps);
     if (!gate.ok) return { ok: false, reason: gate.reason };
   }
 

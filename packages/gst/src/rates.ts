@@ -36,23 +36,18 @@ export type SlabGateResult =
 
 /**
  * Legal-slab check over basis points. Returns a discriminated union, never
- * a boolean — callers can render the exact rejection reason (MSTR-style
- * ergonomics per RESEARCH Pattern 5).
+ * a boolean and never an exception — callers MUST inspect the union and can
+ * render the exact rejection reason (MSTR-style ergonomics per RESEARCH
+ * Pattern 5). This is also THE entry-time catalog-rate gate: Phase 3 catalog
+ * screens call it when an item's GST rate is saved, so the union contract is
+ * the single honest shape (no assert-flavored alias exists to invite skipping
+ * the result check).
  */
 export function isLegalSlabRate(rateBps: bigint): SlabGateResult {
   const known = CURRENT_SLABS_BPS as readonly bigint[];
   return known.includes(rateBps)
     ? { ok: true }
     : { ok: false, reason: 'NOT_A_CURRENT_SLAB' };
-}
-
-/**
- * Entry-time catalog-rate gate — the function Phase 3 catalog screens call
- * when an item's GST rate is saved. Same union as `isLegalSlabRate`; the
- * distinct name documents intent at call sites.
- */
-export function assertCatalogRate(rateBps: bigint): SlabGateResult {
-  return isLegalSlabRate(rateBps);
 }
 
 export type PercentFailReason =
