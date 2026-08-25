@@ -14,8 +14,11 @@
  * new golden matrix.
  */
 
-import { divRoundHalfUp, lineBasePaise } from './money';
+import { divRoundHalfUp, lineBasePaise, roundOffPaise } from './money';
 import { assertCatalogRate } from './rates';
+import type { TaxHead } from './place-of-supply';
+
+export type { TaxHead } from './place-of-supply';
 
 export type LineCharacter =
   | 'taxable'
@@ -25,8 +28,6 @@ export type LineCharacter =
   | 'zero_rated_taxable';
 
 export type PricingMode = 'exclusive' | 'inclusive';
-
-export type TaxHead = 'CGST_SGST' | 'CGST_UTGST' | 'IGST';
 
 export type RegistrationType = 'regular' | 'composition';
 
@@ -246,4 +247,85 @@ export function gstr1FlavorFor(
       if (supplyType === 'intra_state') return 'B2CS';
       return 'B2_UNRESOLVED';
   }
+}
+
+// ---------------------------------------------------------------------------
+// Invoice totals — the single rounding event lives here (D-56)
+// ---------------------------------------------------------------------------
+
+export interface InvoiceTotals {
+  lines: LineResult[];
+  subtotalPaise: bigint;
+  taxPaise: bigint;
+  roundOffPaise: bigint;
+  grandTotalPaise: bigint;
+  docClass: DocClass;
+  gstr1Flavor: Gstr1Flavor;
+  character: LineCharacter | null;
+  reverseCharge: boolean;
+}
+
+export type InvoiceTotalsOutcome =
+  | ({ ok: true } & InvoiceTotals)
+  | {
+      ok: false;
+      reason: 'HETEROGENEOUS_TAX_CHARACTER';
+      offendingLinePositions: number[];
+    }
+  | { ok: false; reason: 'NOT_A_CURRENT_SLAB'; linePosition: number };
+
+/**
+ * Total an invoice draft: uniform-character check propagates (D-61), every
+ * line computes under the POS-derived head, each column sums EXACTLY, and
+ * the ONLY half-up rounding event in the pipeline applies to the raw grand
+ * total as the signed Round Off figure (D-56). Classification and GSTR-1
+ * flavor ride along (D-62/D-60); the reverse-charge flag echoes untouched
+ * (D-54).
+ */
+export function totalInvoice(
+  lines: ReadonlyArray<LineInput>,
+  ctx: {
+    head: TaxHead;
+    registrationType: RegistrationType;
+    reverseCharge: boolean;
+  },
+): InvoiceTotalsOutcome {
+  const classification = classifyDraft(lines);
+  if (!classification.ok) return classification;
+
+  const computed: LineResult[] = [];
+  for (const [position, line] of lines.entries()) {
+    const result = computeLine(line, { head: ctx.head });
+    if (!result.ok) return { ok: false, reason: result.reason, linePosition: position };
+    computed.push(result);
+  }
+
+  let subtotal = 0n;
+  let taxTotal = 0n;
+  for (const line of computed) {
+    subtotal += line.taxablePaise;
+    taxTotal += line.taxPaise;
+  }
+  const rawGrandTotal = subtotal + taxTotal;
+  const roundOff = roundOffPaise(rawGrandTotal);
+
+  const supplyType = ctx.head === 'IGST' ? 'inter_state' : 'intra_state';
+  return {
+    ok: true,
+    lines: computed,
+    subtotalPaise: subtotal,
+    taxPaise: taxTotal,
+    roundOffPaise: roundOff,
+    grandTotalPaise: rawGrandTotal + roundOff,
+    docClass: classifyDocument({
+      registrationType: ctx.registrationType,
+      character: classification.character,
+    }),
+    gstr1Flavor:
+      classification.character === null
+        ? 'B2_UNRESOLVED'
+        : gstr1FlavorFor(classification.character, supplyType),
+    character: classification.character,
+    reverseCharge: ctx.reverseCharge === true,
+  };
 }
