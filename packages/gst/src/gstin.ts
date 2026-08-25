@@ -19,6 +19,8 @@
  * the module exports no boolean-returning alias.
  */
 
+import { isValidStateCode } from './state-codes';
+
 export const GSTIN_REGEX = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
 
 const CHARSET = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
@@ -37,17 +39,12 @@ export type GstinResult =
   | { ok: false; reason: GstinFailReason };
 
 /**
- * State/UT code universe: '01'..'38' plus '97' (Other Territory) per
- * RESEARCH Assumption A1. Membership predicate embedded locally to avoid a
- * cross-plan file dependency on state-codes.ts — the full named table with
- * legislature metadata lands in plan 02-03 and owns naming/names; this
- * module only needs the membership fact for MSTR-02 gating.
+ * State/UT code universe: the SINGLE legal fact lives in state-codes.ts
+ * (39-entry typed table, '01'..'38' plus '97'). This module imports that
+ * membership predicate instead of carrying a private copy — two independent
+ * sources of one filing-blocking fact could drift silently (the table itself
+ * already needed one correction: Lakshadweep is '31', not '36').
  */
-function isValidStateCode(code: string): boolean {
-  if (!/^[0-9]{2}$/.test(code)) return false;
-  const n = Number(code); // exact integer conversion of exactly two digits
-  return (n >= 1 && n <= 38) || n === 97;
-}
 
 function charsetValue(ch: string): number {
   return CHARSET.indexOf(ch);
