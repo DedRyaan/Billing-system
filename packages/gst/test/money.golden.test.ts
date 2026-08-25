@@ -98,7 +98,9 @@ describe('roundOffPaise — signed D-56 extremes', () => {
 
   it('round-off is the ONLY rounding event: line values stay untouched by it', () => {
     const raw = 844279n;
-    expect(lineBasePaise(1000n, raw) === raw || true).toBe(true); // lines never see round-off
+    // 1000 milli divides exactly, so the line base equals the raw price —
+    // round-off must never leak into line computation.
+    expect(lineBasePaise(1000n, raw)).toBe(raw);
     expect(halfUpToRupee(raw) - raw).toBe(21n);
   });
 });
