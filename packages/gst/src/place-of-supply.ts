@@ -40,11 +40,21 @@ export interface PosInput {
    * goods at delivery / installation site / on-board point (rows 4-6).
    */
   shipToStateCode?: string;
-  /** Ordering/billing party's principal place of business (s.10(1)(b) slot). */
+  /**
+   * Ordering/billing party's principal place of business. This is the
+   * GOODS s.10(1)(b) slot: for services it is only a last-resort fallback —
+   * `recipientRegisteredStateCode` is the lawful s.12(2)(a) governing slot
+   * and always outranks it.
+   */
   billToStateCode?: string;
-  /** Recipient's GST-registered location (services row 7). */
+  /** Recipient's GST-registered location — the general B2B services row (s.12(2)(a), row 7). */
   recipientRegisteredStateCode?: string;
-  /** Restaurant/immovable-property/event performance location (row 9). */
+  /**
+   * Restaurant/immovable-property/event performance location — electing this
+   * slot ELECTS the special IGST s.12/13 row (row 9). Setting it alongside a
+   * recipient-side slot is ambiguous (data presence must not silently elect a
+   * legal rule) and rejects typed with 'AMBIGUOUS_SERVICE_SLOTS'.
+   */
   performanceLocationStateCode?: string;
   /** Supply to/from an SEZ unit or developer — forces IGST after resolution (row 12). */
   sez?: boolean;
@@ -54,7 +64,10 @@ export type TaxHead = 'CGST_SGST' | 'CGST_UTGST' | 'IGST';
 
 export type SupplyType = 'intra_state' | 'inter_state';
 
-export type PosFailReason = 'DIRECTED_BILL_TO_REQUIRED' | 'UNKNOWN_STATE_CODE';
+export type PosFailReason =
+  | 'DIRECTED_BILL_TO_REQUIRED'
+  | 'AMBIGUOUS_SERVICE_SLOTS'
+  | 'UNKNOWN_STATE_CODE';
 
 export type PosResult =
   | {
@@ -106,14 +119,23 @@ function resolvePos(input: PosInput): { posStateCode: string } | { fail: PosFail
       return { posStateCode: shipToStateCode ?? supplierStateCode };
 
     case 'service': {
-      // Rows 7-9: performance location wins; then recipient location via
-      // bill-to or registered state; then supplier fallback when nothing is
-      // recorded for an unregistered recipient (row 8 tail).
+      // Rows 7-9 with EXPLICIT rule election: presence of an optional slot
+      // must never silently elect a special IGST s.12/13 row. A performance
+      // location recorded alongside a recipient-side slot is ambiguous — the
+      // caller must elect one row, so the combo rejects typed instead of
+      // letting incidental data flip the tax head.
+      const recipientSide = recipientRegisteredStateCode ?? billToStateCode;
+      if (performanceLocationStateCode !== undefined && recipientSide !== undefined) {
+        return { fail: 'AMBIGUOUS_SERVICE_SLOTS' };
+      }
+      // Resolution: performance location (row 9, sole election) -> registered
+      // recipient location (s.12(2)(a), row 7) -> bill-to as last-resort
+      // fallback -> supplier when nothing is on record (row 8 tail).
       return {
         posStateCode:
           performanceLocationStateCode ??
-          billToStateCode ??
           recipientRegisteredStateCode ??
+          billToStateCode ??
           supplierStateCode,
       };
     }

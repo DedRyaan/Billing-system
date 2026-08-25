@@ -107,18 +107,56 @@ describe('derivePlaceOfSupply — targeted law rows', () => {
     expect(result).toMatchObject({ ok: true, posStateCode: '29', head: 'IGST' });
   });
 
-  it('services: performance location wins over every recipient field (row 9)', () => {
+  it('services: performance location ALONE elects the special s.12/13 row (row 9)', () => {
     const result = derivePlaceOfSupply({
       supplierStateCode: '27',
       kind: 'service',
-      billToStateCode: '29',
-      recipientRegisteredStateCode: '24',
       performanceLocationStateCode: '32',
     });
     expect(result).toMatchObject({ ok: true, posStateCode: '32', head: 'IGST' });
   });
 
-  it('services to registered recipient use the recipient location (row 7)', () => {
+  it('services: performance location competing with a recipient slot rejects typed (present ≠ elected)', () => {
+    // Incidental performance data must not silently flip a registered
+    // recipient's POS away from s.12(2)(a); the caller must elect ONE row.
+    expect(
+      derivePlaceOfSupply({
+        supplierStateCode: '27',
+        kind: 'service',
+        recipientRegisteredStateCode: '24',
+        performanceLocationStateCode: '32',
+      }),
+    ).toEqual({ ok: false, reason: 'AMBIGUOUS_SERVICE_SLOTS' });
+    expect(
+      derivePlaceOfSupply({
+        supplierStateCode: '27',
+        kind: 'service',
+        billToStateCode: '29',
+        performanceLocationStateCode: '32',
+      }),
+    ).toEqual({ ok: false, reason: 'AMBIGUOUS_SERVICE_SLOTS' });
+  });
+
+  it('services to a registered recipient use the REGISTERED location (row 7, s.12(2)(a))', () => {
+    const result = derivePlaceOfSupply({
+      supplierStateCode: '27',
+      kind: 'service',
+      recipientRegisteredStateCode: '24',
+    });
+    expect(result).toMatchObject({ ok: true, posStateCode: '24', head: 'IGST' });
+  });
+
+  it('services precedence pinned: registered location outranks the goods-only bill-to slot', () => {
+    const result = derivePlaceOfSupply({
+      supplierStateCode: '27',
+      kind: 'service',
+      billToStateCode: '29',
+      recipientRegisteredStateCode: '24',
+    });
+    expect(result).toMatchObject({ ok: true, posStateCode: '24', head: 'IGST' });
+  });
+
+  it('services with ONLY the goods-style bill-to recorded fall back through it (documented tail)', () => {
     const result = derivePlaceOfSupply({
       supplierStateCode: '27',
       kind: 'service',
