@@ -50,7 +50,12 @@ export function ConfirmDialog({
           <p className="mt-sm text-body text-ink-secondary">{body}</p>
           <div className="mt-lg flex items-center justify-end gap-sm">
             {/* Initial focus lands here by contract - never the danger button. */}
-            <Button variant="secondary" autoFocus data-initial-focus="">
+            <Button
+              variant="secondary"
+              autoFocus
+              data-initial-focus=""
+              onClick={() => onOpenChange(false)}
+            >
               {cancelLabel}
             </Button>
             <Button
