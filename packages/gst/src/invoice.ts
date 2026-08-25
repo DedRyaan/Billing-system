@@ -180,16 +180,19 @@ export type DraftClassification =
   | {
       ok: false;
       reason: 'HETEROGENEOUS_TAX_CHARACTER';
-      offendingLinePositions: number[];
+      /** 0-based array indexes of the offending lines — NOT human-facing 1-based positions. */
+      offendingLineIndexes: number[];
     };
 
 /**
  * Invoice-level character uniformity (D-61): a draft may not mix taxable
  * and non-taxable lines. The first line's character is the reference; every
  * later position whose character differs is reported in
- * `offendingLinePositions` (data, not exceptions). An empty draft is
- * vacuously uniform at `character: null`. Zero-amount lines do NOT offend —
- * mixing is a character question, not an amount question (D-65).
+ * `offendingLineIndexes` (data, not exceptions) as 0-based array indexes
+ * matching `lines[i]` directly — consumers must add 1 before showing them
+ * to users. An empty draft is vacuously uniform at `character: null`.
+ * Zero-amount lines do NOT offend — mixing is a character question, not an
+ * amount question (D-65).
  */
 export function classifyDraft(
   lines: ReadonlyArray<{ readonly character: LineCharacter }>,
@@ -209,7 +212,7 @@ export function classifyDraft(
     return {
       ok: false,
       reason: 'HETEROGENEOUS_TAX_CHARACTER',
-      offendingLinePositions: offending,
+      offendingLineIndexes: offending,
     };
   }
   return { ok: true, character: reference };
@@ -288,7 +291,8 @@ export type InvoiceTotalsOutcome =
   | {
       ok: false;
       reason: 'HETEROGENEOUS_TAX_CHARACTER';
-      offendingLinePositions: number[];
+      /** 0-based array indexes of the offending lines — NOT human-facing positions. */
+      offendingLineIndexes: number[];
     }
   | { ok: false; reason: 'NOT_A_CURRENT_SLAB'; linePosition: number }
   | { ok: false; reason: 'NEGATIVE_AMOUNT'; linePosition: number }

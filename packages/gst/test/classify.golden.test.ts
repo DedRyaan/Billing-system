@@ -51,7 +51,7 @@ describe('classifyDraft — mixed drafts reject closed with offending positions 
     expect(result).toEqual({
       ok: false,
       reason: 'HETEROGENEOUS_TAX_CHARACTER',
-      offendingLinePositions: [2],
+      offendingLineIndexes: [2],
     });
   });
 
@@ -64,7 +64,7 @@ describe('classifyDraft — mixed drafts reject closed with offending positions 
     ]);
     if (result.ok) throw new Error('expected rejection');
     expect(result.reason).toBe('HETEROGENEOUS_TAX_CHARACTER');
-    expect(result.offendingLinePositions).toEqual([1, 3]);
+    expect(result.offendingLineIndexes).toEqual([1, 3]);
   });
 
   it('an empty draft is vacuously uniform at no character', () => {

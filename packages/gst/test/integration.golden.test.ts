@@ -233,7 +233,7 @@ describe('integration: rejections propagate through totalInvoice with positions'
     expect(result).toEqual({
       ok: false,
       reason: 'HETEROGENEOUS_TAX_CHARACTER',
-      offendingLinePositions: [1],
+      offendingLineIndexes: [1],
     });
   });
 
