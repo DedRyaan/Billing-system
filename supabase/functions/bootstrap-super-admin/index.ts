@@ -39,6 +39,7 @@
 // tests import handleBootstrap() directly. node:crypto is available in both.
 
 import { timingSafeEqual } from "node:crypto";
+import { Buffer } from "node:buffer";
 import { createClient as supabaseCreateClient, type SupabaseClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
