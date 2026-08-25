@@ -1,3 +1,5 @@
+import { describe, expect, it } from 'vitest';
+
 import * as gstin from '../src/gstin';
 import { GSTIN_REGEX, validateGstin } from '../src/gstin';
 
