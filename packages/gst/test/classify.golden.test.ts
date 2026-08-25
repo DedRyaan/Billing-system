@@ -35,7 +35,7 @@ describe('classifyDraft — uniform characters pass carrying that character', ()
       { character: 'taxable', qtyMilli: 1000n },
       { character: 'taxable', qtyMilli: 0n }, // free sample
       { character: 'taxable', qtyMilli: 2000n },
-    ];
+    ] as const;
     expect(classifyDraft(lines)).toEqual({ ok: true, character: 'taxable' });
   });
 });

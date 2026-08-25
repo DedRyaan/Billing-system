@@ -149,3 +149,101 @@ export function computeLine(
     taxPaise: cgst + sgstOrUtgst + igst,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Classification (D-60/D-61/D-62)
+// ---------------------------------------------------------------------------
+
+export type DocClass = 'TAX_INVOICE' | 'BILL_OF_SUPPLY';
+
+export type DraftClassification =
+  | { ok: true; character: LineCharacter | null }
+  | {
+      ok: false;
+      reason: 'HETEROGENEOUS_TAX_CHARACTER';
+      offendingLinePositions: number[];
+    };
+
+/**
+ * Invoice-level character uniformity (D-61): a draft may not mix taxable
+ * and non-taxable lines. The first line's character is the reference; every
+ * later position whose character differs is reported in
+ * `offendingLinePositions` (data, not exceptions). An empty draft is
+ * vacuously uniform at `character: null`. Zero-amount lines do NOT offend —
+ * mixing is a character question, not an amount question (D-65).
+ */
+export function classifyDraft(
+  lines: ReadonlyArray<{ readonly character: LineCharacter }>,
+): DraftClassification {
+  const reference = lines[0]?.character ?? null;
+  if (reference === null) return { ok: true, character: null };
+
+  const offending: number[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const character = lines[i]?.character;
+    if (character !== undefined && character !== reference) {
+      offending.push(i);
+    }
+  }
+
+  if (offending.length > 0) {
+    return {
+      ok: false,
+      reason: 'HETEROGENEOUS_TAX_CHARACTER',
+      offendingLinePositions: offending,
+    };
+  }
+  return { ok: true, character: reference };
+}
+
+/**
+ * Document class from registration type + the (already uniform) draft
+ * character (D-62): composition dealers always issue a Bill of Supply;
+ * regular dealers issue Tax Invoices for taxable characters (including
+ * zero-rated-taxable) and Bills of Supply for genuinely non-taxable ones.
+ */
+export function classifyDocument(config: {
+  registrationType: RegistrationType;
+  character: LineCharacter | null;
+}): DocClass {
+  if (config.registrationType === 'composition') return 'BILL_OF_SUPPLY';
+  if (config.character === 'taxable' || config.character === 'zero_rated_taxable') {
+    return 'TAX_INVOICE';
+  }
+  return 'BILL_OF_SUPPLY';
+}
+
+export type Gstr1Flavor =
+  | 'B2B'
+  | 'B2CS'
+  | 'B2_UNRESOLVED'
+  | 'GSTR1_TABLE8_EXEMPT'
+  | 'GSTR1_TABLE8_NIL_RATED'
+  | 'GSTR1_TABLE8_NON_GST'
+  | 'GSTR1_TABLE14_ZERO_RATED';
+
+/**
+ * GSTR-1 mapping surface (D-60): each of the four no-tax flavors maps to a
+ * DISTINCT table hint; taxable lines hint B2B/B2C by supply type. This is a
+ * routing hint only — full aggregation and buyer-registration-based B2B/B2C
+ * refinement belong to Phase 8.
+ */
+export function gstr1FlavorFor(
+  character: LineCharacter,
+  supplyType?: 'intra_state' | 'inter_state',
+): Gstr1Flavor {
+  switch (character) {
+    case 'exempt':
+      return 'GSTR1_TABLE8_EXEMPT';
+    case 'nil_rated':
+      return 'GSTR1_TABLE8_NIL_RATED';
+    case 'non_gst':
+      return 'GSTR1_TABLE8_NON_GST';
+    case 'zero_rated_taxable':
+      return 'GSTR1_TABLE14_ZERO_RATED';
+    case 'taxable':
+      if (supplyType === 'inter_state') return 'B2B';
+      if (supplyType === 'intra_state') return 'B2CS';
+      return 'B2_UNRESOLVED';
+  }
+}
