@@ -124,6 +124,9 @@ importers:
       '@billing/db-types':
         specifier: workspace:*
         version: link:../db-types
+      '@billing/gst':
+        specifier: workspace:*
+        version: link:../gst
       '@supabase/supabase-js':
         specifier: ^2.112.3
         version: 2.112.3
