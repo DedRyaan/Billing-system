@@ -1,0 +1,27 @@
+# Billing desktop - Tauri 2 shell.
+#
+# NOTE (honest toolchain gap): this crate is AUTHORED here but NOT compiled -
+# the executor machine has no Rust toolchain. Crate resolution/build belongs
+# to end-of-phase human verification on a Rust-capable host (`pnpm tauri dev`).
+
+[package]
+name = "billing-desktop"
+version = "0.1.0"
+edition = "2021"
+description = "GST billing system - desktop shell (Tauri 2)"
+
+[lib]
+name = "billing_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2.10", features = [] }
+# Window geometry persistence (D-66/A12).
+tauri-plugin-window-state = "2"
+# File-backed session storage seam (D-70/AUTH-01).
+tauri-plugin-store = "2"
+# Single instance guard (A12): second launch focuses the existing window.
+tauri-plugin-single-instance = "2"

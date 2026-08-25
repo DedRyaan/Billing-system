@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+    <rect width="100%" height="100%" fill="#F5F3EE" />
+    <g id="logo-mark-monogram">
+        <rect x="48" y="48" width="416" height="416" rx="64" fill="#1A1A18" />
+        <path d="M 336 174 C 336 120, 296 86, 256 86 C 216 86, 176 120, 176 174 C 176 220, 216 235, 256 245 C 296 255, 336 270, 336 316 C 336 370, 296 404, 256 404 C 216 404, 176 370, 176 316" fill="none" stroke="#F5F3EE" stroke-width="36" stroke-linecap="round" stroke-linejoin="round" />
+        <circle cx="400" cy="400" r="32" fill="#4A5FE5" />
+    </g>
+</svg>

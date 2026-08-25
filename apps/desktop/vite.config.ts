@@ -8,4 +8,9 @@ import { defineConfig } from "vite";
 // Tailwind v4 CSS-first tokens live in src/styles/tokens.css (D-69).
 export default defineConfig({
   plugins: [TanStackRouterVite(), tailwindcss(), react()],
+  server: {
+    // Matches tauri.conf.json devUrl - strict so Tauri never races a drifted port.
+    port: 5173,
+    strictPort: true,
+  },
 });
