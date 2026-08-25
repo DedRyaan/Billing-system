@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import * as gstin from '../src/gstin';
-import { GSTIN_REGEX, validateGstin } from '../src/gstin';
+import { validateGstin } from '../src/gstin';
+
+/**
+ * Canonical structural shape as a TEST FIXTURE (not a src export): the
+ * validator deliberately performs manual char-class checks so every
+ * corruption class gets its own reason code, and regex-only validation lets
+ * checksum-dead identifiers survive (RESEARCH Pitfall 7). This independent
+ * encoding of the documented shape stays aligned with actual acceptance via
+ * the rows below — not by sharing runtime code with the validator.
+ */
+const CANONICAL_GSTIN_SHAPE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z]Z[0-9A-Z]$/;
 
 /**
  * GSTIN structural + mod-36 checksum golden matrix (MSTR-02).
@@ -74,17 +84,29 @@ describe('validateGstin — one corrupted row per rejection class', () => {
   });
 });
 
-describe('GSTIN_REGEX exported structural constant', () => {
-  it('matches the canonical 15-char shape and rejects shorter/longer text', () => {
-    expect(GSTIN_REGEX.test('27AAPFU0939F1ZV')).toBe(true);
-    expect(GSTIN_REGEX.test('27AAPFU0939F1Z')).toBe(false);
-    expect(GSTIN_REGEX.test('27aAPFU0939F1ZV')).toBe(false);
+describe('canonical GSTIN shape fixture — documents the accepted structure', () => {
+  it('fixture matches exactly the inputs the validator accepts', () => {
+    expect(CANONICAL_GSTIN_SHAPE.test('27AAPFU0939F1ZV')).toBe(true);
+    expect(CANONICAL_GSTIN_SHAPE.test('33AAACC1206D1ZN')).toBe(true);
+    expect(CANONICAL_GSTIN_SHAPE.test('97AAPFU0939F1ZO')).toBe(true);
+    expect(CANONICAL_GSTIN_SHAPE.test('27AAPFU0939F1Z')).toBe(false); // short
+    expect(CANONICAL_GSTIN_SHAPE.test('27aAPFU0939F1ZV')).toBe(false); // lowercase
+  });
+
+  it('shape-valid text can still be law-dead — why regex-only validation is rejected (Pitfall 7)', () => {
+    // '00AAPFU0939F1ZV' matches the canonical shape but carries a state code
+    // outside the universe; the validator's fine-grained checks catch it.
+    expect(CANONICAL_GSTIN_SHAPE.test('00AAPFU0939F1ZV')).toBe(true);
+    expect(validateGstin('00AAPFU0939F1ZV')).toEqual({
+      ok: false,
+      reason: 'UNKNOWN_STATE_CODE',
+    });
   });
 });
 
 describe('exported surface — unions only, never boolean predicates', () => {
-  it('exports exactly the regex constant and the union-returning validator', () => {
-    expect(Object.keys(gstin).sort()).toEqual(['GSTIN_REGEX', 'validateGstin']);
+  it('exports exactly the union-returning validator', () => {
+    expect(Object.keys(gstin).sort()).toEqual(['validateGstin']);
     const result = validateGstin('27AAPFU0939F1ZV');
     expect(typeof result).toBe('object');
     expect(result).toHaveProperty('ok');

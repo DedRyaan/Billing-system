@@ -38,7 +38,7 @@ export type {
   PosFailReason,
   PosResult,
 } from './place-of-supply';
-export { GSTIN_REGEX, validateGstin } from './gstin';
+export { validateGstin } from './gstin';
 export type { GstinFailReason, GstinResult } from './gstin';
 export {
   TURNOVER_DIGIT_THRESHOLD_RUPEES,
