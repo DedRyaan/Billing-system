@@ -79,7 +79,8 @@ export type LineOutcome =
   | ({ ok: true } & LineResult)
   | { ok: false; reason: 'NOT_A_CURRENT_SLAB' }
   | { ok: false; reason: 'NEGATIVE_AMOUNT' }
-  | { ok: false; reason: 'DISCOUNT_OUT_OF_RANGE' };
+  | { ok: false; reason: 'DISCOUNT_OUT_OF_RANGE' }
+  | { ok: false; reason: 'NEGATIVE_RATE' };
 
 /**
  * Compute one invoice line under the given tax head.
@@ -97,11 +98,15 @@ export type LineOutcome =
  * field (D-60); the slab gate only fires for character 'taxable'.
  *
  * Boundary domain gate: qtyMilli and unitPricePaise must be >= 0n and
- * discountBps in [0, 10000]. `divRoundHalfUp`'s half-up direction is only
- * defined for non-negative operands, so out-of-contract numerics (a classic
- * upstream data-entry/zod-gap bug class) reject as TYPED DATA before any
- * math runs — the engine never executes undefined rounding semantics on
- * negative taxable values.
+ * discountBps in [0, 10000]; gstRateBps must be >= 0n for EVERY character —
+ * non-taxable lines skip the slab gate but still divide by (10000 + rateBps)
+ * in inclusive mode, so a negative rate is either a BigInt RangeError
+ * (rate = -10000n) or silent taxable inflation (T-2-R1). `divRoundHalfUp`'s
+ * half-up direction is only defined for non-negative operands, so
+ * out-of-contract numerics (a classic upstream data-entry/zod-gap bug class)
+ * reject as TYPED DATA before any math runs — the engine never executes
+ * undefined rounding semantics on negative taxable values, and rejections
+ * are data, never exceptions.
  */
 export function computeLine(
   line: LineInput,
@@ -114,6 +119,9 @@ export function computeLine(
   }
   if (line.discountBps < 0n || line.discountBps > 10000n) {
     return { ok: false, reason: 'DISCOUNT_OUT_OF_RANGE' };
+  }
+  if (line.gstRateBps < 0n) {
+    return { ok: false, reason: 'NEGATIVE_RATE' };
   }
 
   if (!isNonTaxable(line.character)) {
@@ -297,7 +305,8 @@ export type InvoiceTotalsOutcome =
     }
   | { ok: false; reason: 'NOT_A_CURRENT_SLAB'; linePosition: number }
   | { ok: false; reason: 'NEGATIVE_AMOUNT'; linePosition: number }
-  | { ok: false; reason: 'DISCOUNT_OUT_OF_RANGE'; linePosition: number };
+  | { ok: false; reason: 'DISCOUNT_OUT_OF_RANGE'; linePosition: number }
+  | { ok: false; reason: 'NEGATIVE_RATE'; linePosition: number };
 
 /**
  * Total an invoice draft: an empty draft rejects typed ('EMPTY_DRAFT' — a

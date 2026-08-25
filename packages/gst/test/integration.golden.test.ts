@@ -305,6 +305,23 @@ describe('integration: rejections propagate through totalInvoice with positions'
     expect(result).toEqual({ ok: false, reason: 'DISCOUNT_OUT_OF_RANGE', linePosition: 0 });
   });
 
+  it('negative rate rejects through the pipeline (T-2-R1) naming its position', () => {
+    const result = totalInvoice(
+      [
+        {
+          qtyMilli: 1000n,
+          unitPricePaise: 50000n,
+          discountBps: 0n,
+          pricingMode: 'inclusive',
+          gstRateBps: -10000n, // would be BigInt RangeError before the gate
+          character: 'exempt',
+        },
+      ],
+      { head: 'CGST_SGST', registrationType: 'regular', reverseCharge: false },
+    );
+    expect(result).toEqual({ ok: false, reason: 'NEGATIVE_RATE', linePosition: 0 });
+  });
+
   it('per-line computeLine agrees with the pipeline view of an odd-paisa split', () => {
     const direct = computeLine(
       {

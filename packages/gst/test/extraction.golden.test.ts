@@ -237,6 +237,24 @@ describe('computeLine — boundary domain gate rejects out-of-contract numerics 
     expect(result).toEqual({ ok: false, reason: 'DISCOUNT_OUT_OF_RANGE' });
   });
 
+  // T-2-R1: non-taxable lines skip the slab gate, but inclusive mode still
+  // divides by (10000 + rateBps) — a negative rate was either a raw BigInt
+  // RangeError (rate -10000n) or silent taxable inflation. Rejections are
+  // data, never exceptions, for EVERY character.
+  it.each([
+    ['exempt', 'exempt'],
+    ['nil-rated', 'nil_rated'],
+    ['non-GST', 'non_gst'],
+    ['taxable', 'taxable'],
+  ] as const)('negative rate on %s line rejects with NEGATIVE_RATE (never throws)', (_label, character) => {
+    expect(
+      computeLine(exclusive({ character, pricingMode: 'inclusive', gstRateBps: -10000n }), INTRA),
+    ).toEqual({ ok: false, reason: 'NEGATIVE_RATE' });
+    expect(
+      computeLine(exclusive({ character, gstRateBps: -1n }), INTRA),
+    ).toEqual({ ok: false, reason: 'NEGATIVE_RATE' });
+  });
+
   it('the CR vector itself (base 10000p x discount 15000) never reaches division', () => {
     // Before the gate this produced taxable -5000p and truncated "tax" -899n;
     // now it is a typed rejection under both heads.
