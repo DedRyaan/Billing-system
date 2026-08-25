@@ -95,7 +95,7 @@ export function parseDecimalToPaise(s: string): ParseResult {
   if (!isAllDigits(intPart) || (parts.length === 2 && !isAllDigits(fracPart))) {
     return { ok: false, reason: 'INVALID_CHARACTERS' };
   }
-  if (intPart.length === 0 || fracPart.length === 0) {
+  if (intPart.length === 0 || (parts.length === 2 && fracPart.length === 0)) {
     // '.', '5.', '.5' — a bare dot or dangling side is not a digit string.
     return { ok: false, reason: 'INVALID_CHARACTERS' };
   }
