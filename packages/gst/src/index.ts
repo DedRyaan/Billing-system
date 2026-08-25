@@ -7,6 +7,7 @@ export {
   sumPaise,
   halfUpToRupee,
   roundOffPaise,
+  parseDecimalHundredths,
   parseDecimalToPaise,
   serializePaise,
 } from './money';

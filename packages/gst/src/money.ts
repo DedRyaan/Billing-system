@@ -68,16 +68,26 @@ export type ParseResult =
   | { ok: false; reason: ParseFailReason };
 
 /**
- * Strict decimal-string -> paise parser at the engine boundary.
+ * Shared strict decimal-string scanner behind BOTH boundary parsers — paise
+ * here, basis points in rates.ts. A rupee amount and a percent with at most
+ * two fractional places are the same textual shape, so one accept/reject
+ * policy serves both and parser-policy changes can never desync the boundary
+ * contracts.
  *
  * Accepts ONLY plain digit strings with an optional single dot and at most
  * two fractional places ('0', '19.9', '19.99'). No sign, no exponent form,
  * no whitespace, no currency glyphs — anything else is rejected with a typed
- * reason so callers never smuggle float-typed or malformed money into the
+ * reason so callers never smuggle float-typed or malformed values into the
  * exact core (RESEARCH Pitfall 1). String math only; the binary-float
  * parsing builtin named in that pitfall appears nowhere in src.
+ *
+ * Returns the value scaled to integer HUNDREDTHS ('19.99' -> 1999n):
+ * paise are hundredths of a rupee and basis points are hundredths of a
+ * percent, so each consumer maps the result directly with no further scaling.
  */
-export function parseDecimalToPaise(s: string): ParseResult {
+export function parseDecimalHundredths(
+  s: string,
+): { ok: true; hundredths: bigint } | { ok: false; reason: ParseFailReason } {
   if (s.length === 0) return { ok: false, reason: 'EMPTY' };
 
   // Sign characters anywhere are refused outright — money crosses the
@@ -103,9 +113,18 @@ export function parseDecimalToPaise(s: string): ParseResult {
     return { ok: false, reason: 'TOO_MANY_DECIMAL_PLACES' };
   }
 
-  const fracPaise =
+  const hundredths =
     fracPart.length === 1 ? BigInt(fracPart) * 10n : BigInt(fracPart);
-  return { ok: true, paise: BigInt(intPart) * 100n + fracPaise };
+  return { ok: true, hundredths: BigInt(intPart) * 100n + hundredths };
+}
+
+/**
+ * Strict decimal-string -> paise parser at the engine boundary. Delegates to
+ * the shared scanner (`parseDecimalHundredths`); paise ARE the hundredths.
+ */
+export function parseDecimalToPaise(s: string): ParseResult {
+  const parsed = parseDecimalHundredths(s);
+  return parsed.ok ? { ok: true, paise: parsed.hundredths } : parsed;
 }
 
 function isAllDigits(s: string): boolean {

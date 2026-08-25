@@ -50,6 +50,8 @@ export function isLegalSlabRate(rateBps: bigint): SlabGateResult {
     : { ok: false, reason: 'NOT_A_CURRENT_SLAB' };
 }
 
+import { parseDecimalHundredths } from './money';
+
 export type PercentFailReason =
   | 'EMPTY'
   | 'INVALID_CHARACTERS'
@@ -60,14 +62,6 @@ export type PercentToBpsResult =
   | { ok: true; bps: bigint }
   | { ok: false; reason: PercentFailReason };
 
-function isAllDigits(s: string): boolean {
-  if (s.length === 0) return false;
-  for (const ch of s) {
-    if (ch < '0' || ch > '9') return false;
-  }
-  return true;
-}
-
 /**
  * Exact percent-string -> basis-points conversion by pure string math.
  *
@@ -76,37 +70,17 @@ function isAllDigits(s: string): boolean {
  * basis point — so the parsed hundredths value equals bps with no rounding
  * anywhere: '0.25' -> 25n, '1.5' -> 150n, '40' -> 4000n.
  *
- * Mirrors money.ts parse discipline: plain digit strings only, no sign,
- * no exponent form, no whitespace or currency glyphs; more than two
- * fractional places rejects because the DB column is numeric(5,2)
- * (migration 0005_ledger_masterdata.sql gst_rate numeric(5,2)).
+ * Delegates to the shared strict scanner in money.ts
+ * (`parseDecimalHundredths`) — plain digit strings only, no sign, no
+ * exponent form, no whitespace or currency glyphs; more than two fractional
+ * places rejects because the DB column is numeric(5,2)
+ * (migration 0005_ledger_masterdata.sql gst_rate numeric(5,2)). One scanner
+ * means money and percent boundary policy can never drift apart.
  */
 export function percentStringToBps(s: string): PercentToBpsResult {
-  if (s.length === 0) return { ok: false, reason: 'EMPTY' };
-  if (s.includes('+') || s.includes('-')) {
-    return { ok: false, reason: 'SIGN_NOT_ALLOWED' };
-  }
-
-  const parts = s.split('.');
-  if (parts.length > 2) return { ok: false, reason: 'INVALID_CHARACTERS' };
-  const intPart = parts[0] ?? '';
-  const fracPart = parts.length === 2 ? (parts[1] ?? '') : '';
-
-  if (!isAllDigits(intPart) || (parts.length === 2 && !isAllDigits(fracPart))) {
-    return { ok: false, reason: 'INVALID_CHARACTERS' };
-  }
-  if (intPart.length === 0 || (parts.length === 2 && fracPart.length === 0)) {
-    // '.', '5.', '.5' — a bare dot or dangling side is not a digit string.
-    return { ok: false, reason: 'INVALID_CHARACTERS' };
-  }
-  if (fracPart.length > 2) {
-    return { ok: false, reason: 'TOO_MANY_DECIMAL_PLACES' };
-  }
-
-  const hundredths =
-    fracPart.length === 1 ? BigInt(fracPart) * 10n : BigInt(fracPart);
+  const parsed = parseDecimalHundredths(s);
   // Hundredths of a percent == basis points, exactly.
-  return { ok: true, bps: BigInt(intPart) * 100n + hundredths };
+  return parsed.ok ? { ok: true, bps: parsed.hundredths } : parsed;
 }
 
 /**
