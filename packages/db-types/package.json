@@ -1,0 +1,11 @@
+{
+  "name": "@billing/db-types",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Regenerated Supabase schema types (supabase gen types typescript --linked). Schema truth - never hand-edit.",
+  "types": "./index.ts",
+  "exports": {
+    ".": "./index.ts"
+  }
+}

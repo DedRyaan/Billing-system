@@ -1,0 +1,24 @@
+{
+  "name": "@billing/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The ONLY door to Supabase (D-79): typed client factory + per-domain data-access modules + shared security-critical constants.",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    "./storage-adapter": "./src/storage-adapter.ts",
+    "./*": "./src/*.ts"
+  },
+  "dependencies": {
+    "@billing/db-types": "workspace:*",
+    "@supabase/supabase-js": "^2.112.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.11"
+  }
+}

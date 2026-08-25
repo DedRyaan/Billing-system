@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
+    "isolatedModules": true,
+    "target": "ES2022",
+    "lib": ["ES2023", "DOM"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "noEmit": true,
+    "skipLibCheck": true,
+    "paths": {
+      "auth-sign-in-source": ["./test/stubs/auth-sign-in.d.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}
