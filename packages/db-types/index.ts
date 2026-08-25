@@ -10,7 +10,7 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.15"
+    PostgrestVersion: "14.17"
   }
   graphql_public: {
     Tables: {
@@ -113,33 +113,51 @@ export type Database = {
       }
       businesses: {
         Row: {
+          address: Json | null
           archived_at: string | null
           created_at: string
+          email: string | null
           gstin: string
           id: string
           legal_name: string
+          logo_path: string | null
           number_format: string
+          phone: string | null
           prefix: string | null
+          registration_type: string
+          state: string | null
           trade_name: string | null
         }
         Insert: {
+          address?: Json | null
           archived_at?: string | null
           created_at?: string
+          email?: string | null
           gstin: string
           id?: string
           legal_name: string
+          logo_path?: string | null
           number_format?: string
+          phone?: string | null
           prefix?: string | null
+          registration_type?: string
+          state?: string | null
           trade_name?: string | null
         }
         Update: {
+          address?: Json | null
           archived_at?: string | null
           created_at?: string
+          email?: string | null
           gstin?: string
           id?: string
           legal_name?: string
+          logo_path?: string | null
           number_format?: string
+          phone?: string | null
           prefix?: string | null
+          registration_type?: string
+          state?: string | null
           trade_name?: string | null
         }
         Relationships: []
@@ -152,6 +170,7 @@ export type Database = {
           hsn_sac: string | null
           id: string
           is_active: boolean
+          mrp: number | null
           name: string
           price: number
           stock_qty: number
@@ -165,6 +184,7 @@ export type Database = {
           hsn_sac?: string | null
           id?: string
           is_active?: boolean
+          mrp?: number | null
           name: string
           price: number
           stock_qty?: number
@@ -178,6 +198,7 @@ export type Database = {
           hsn_sac?: string | null
           id?: string
           is_active?: boolean
+          mrp?: number | null
           name?: string
           price?: number
           stock_qty?: number
@@ -203,6 +224,7 @@ export type Database = {
           id: string
           is_active: boolean
           name: string
+          notes: string | null
           phone: string | null
           state: string | null
           updated_at: string
@@ -215,6 +237,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name: string
+          notes?: string | null
           phone?: string | null
           state?: string | null
           updated_at?: string
@@ -227,6 +250,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           name?: string
+          notes?: string | null
           phone?: string | null
           state?: string | null
           updated_at?: string
@@ -647,10 +671,13 @@ export type Database = {
         Args: { p_target: string }
         Returns: undefined
       }
+      dearmor: { Args: { "": string }; Returns: string }
       format_document_number: {
         Args: { p_business_id: string; p_fy: string; p_series: string }
         Returns: string
       }
+      gen_random_uuid: { Args: never; Returns: string }
+      gen_salt: { Args: { "": string }; Returns: string }
       get_setup_code_digest: { Args: never; Returns: string }
       health_check: { Args: never; Returns: string }
       initiate_super_admin_transfer: {
@@ -660,6 +687,10 @@ export type Database = {
       mark_must_change_password: {
         Args: { p_target: string }
         Returns: undefined
+      }
+      pgp_armor_headers: {
+        Args: { "": string }
+        Returns: Record<string, unknown>[]
       }
       reactivate_staff_account: {
         Args: { p_target: string }
