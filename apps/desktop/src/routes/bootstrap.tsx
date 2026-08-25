@@ -1,23 +1,29 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
+import { createFileRoute, redirect, useRouter } from "@tanstack/react-router";
+import { BootstrapScreen } from "../screens/bootstrap/BootstrapScreen";
 import { getBootstrapState } from "../lib/session-seam";
+import { useAuth } from "../auth/AuthProvider";
 
-// OWNERSHIP: this stub is REPLACED by plan 03-03 Task 3 (S2 first-run
-// bootstrap screen wired to bootstrap-super-admin; D-73 probe gate).
-function BootstrapStub() {
-  return (
-    <main aria-label="Set up your workspace">
-      <h1>Set up your workspace</h1>
-    </main>
-  );
-}
-
+// S2 First-run bootstrap - full-fidelity screen replacing the tracer stub
+// (plan 03-03). Reachability is D-73-enforced: pre-bootstrap this is THE
+// destination; post-bootstrap it redirects away forever.
 export const Route = createFileRoute("/bootstrap")({
   beforeLoad: () => {
-    // Pre-bootstrap this is THE destination for everyone - no auth guard
-    // here (precedence over everything, D-73).
-    // Unreachable forever after the owner account exists (D-73); `/`
-    // re-resolves by auth state (dashboard when signed in, login otherwise).
     if (getBootstrapState() === "bootstrapped") throw redirect({ to: "/" });
   },
-  component: BootstrapStub,
+  component: BootstrapPage,
 });
+
+function BootstrapPage() {
+  const router = useRouter();
+  const { invokeFunction, adoptReturnedSession } = useAuth();
+  return (
+    <BootstrapScreen
+      invoke={invokeFunction}
+      adoptSession={adoptReturnedSession}
+      onBootstrapped={() => {
+        // Fresh install has zero businesses - that empty state IS the welcome mat.
+        void router.navigate({ to: "/businesses" });
+      }}
+    />
+  );
+}

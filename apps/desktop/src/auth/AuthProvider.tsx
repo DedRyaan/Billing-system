@@ -14,7 +14,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { restoreSession, signOutLocal, type GoTrueSessionJSON } from "@billing/api/auth";
+import {
+  adoptSession,
+  restoreSession,
+  signIn,
+  signOutLocal,
+  type GoTrueSessionJSON,
+  type SignInResult,
+} from "@billing/api/auth";
 import { createBillingClient } from "@billing/api/client";
 import { resolveSessionStorage } from "@billing/api/session-storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -61,6 +68,17 @@ export interface AuthContextValue {
    */
   role: string | null;
   signOut: () => Promise<void>;
+  /** Edge-Function sign-in over this provider's client (D-79 single door). */
+  signInWithPassword: (input: { email: string; password: string }) => Promise<SignInResult>;
+  /** Adopt a returned session (sign-in/bootstrap mint) into the auth stack. */
+  adoptReturnedSession: (
+    sessionJson: GoTrueSessionJSON,
+  ) => Promise<{ ok: boolean; reason?: string }>;
+  /** Edge Function transport over this provider's client (D-79 single door). */
+  invokeFunction: (
+    fn: string,
+    opts?: { body?: unknown },
+  ) => Promise<{ data: unknown; error: unknown }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -181,6 +199,45 @@ export function AuthProvider({ children, authClient, getProfile, authRouter }: A
     navigateToLogin();
   }, [navigateToLogin]);
 
+  const signInWithPassword = useCallback(
+    async (input: { email: string; password: string }) => {
+      const p = phaseRef.current;
+      const client = p.status === "restoring" ? null : p.client;
+      if (!client) return { ok: false as const, reason: "network" as const };
+      return signIn({ client }, input);
+    },
+    [],
+  );
+
+  const adoptReturnedSession = useCallback(
+    async (sessionJson: GoTrueSessionJSON) => {
+      const current = phaseRef.current;
+      if (current.status === "restoring" || !current.client) {
+        return { ok: false, reason: "unknown" };
+      }
+      const res = await adoptSession(current.client, sessionJson);
+      if (!res.ok) return { ok: false, reason: res.reason };
+      setPhase({ status: "authenticated", client: current.client });
+      setSession(sessionJson);
+      setSessionState("authenticated");
+      return { ok: true };
+    },
+    [],
+  );
+
+  const invokeFunction = useCallback(
+    async (fn: string, opts?: { body?: unknown }) => {
+      const p = phaseRef.current;
+      const client = p.status === "restoring" ? null : p.client;
+      if (!client) return { data: null, error: { name: "NoClientError" } };
+      return (await client.functions.invoke(
+        fn,
+        opts as Parameters<typeof client.functions.invoke>[1],
+      )) as { data: unknown; error: unknown };
+    },
+    [],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status: phase.status,
@@ -188,8 +245,11 @@ export function AuthProvider({ children, authClient, getProfile, authRouter }: A
       profile,
       role: profile?.role ?? null,
       signOut,
+      signInWithPassword,
+      adoptReturnedSession,
+      invokeFunction,
     }),
-    [phase.status, session, profile, signOut],
+    [phase.status, session, profile, signOut, signInWithPassword, adoptReturnedSession, invokeFunction],
   );
 
   return (

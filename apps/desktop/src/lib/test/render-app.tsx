@@ -9,26 +9,23 @@ import { render, type RenderOptions } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AuthProvider } from "../../auth/AuthProvider";
-import { setSessionState, type SessionState } from "../session-seam";
 import { routeTree } from "../../routeTree.gen";
 
-// Headless mount of the FULL provider stack. Two modes:
-//  - tracer mode (no authClient): session seam set directly, plain router.
-//  - auth mode (authClient given): the REAL AuthProvider wraps the tree and
-//    drives restore/interceptor/sign-out with injected fakes. Zero network.
+// Headless mount of the FULL production provider stack: AuthProvider wraps
+// the router exactly like main.tsx. Tests inject a scripted client; when
+// none is given an INERT client is used (restores to unauthenticated,
+// emits nothing). Zero network anywhere.
 //
-// Redirect chains settle asynchronously - tests assert with findBy*/waitFor.
+// Redirect chains settle asynchronously - assert with findBy*/waitFor.
 
 export interface RenderAppOptions extends Omit<RenderOptions, "wrapper"> {
-  /** Injected auth branch for tracer mode - defaults to 'unauthenticated'. */
-  session?: SessionState;
   initialEntry?: string;
   history?: RouterHistory;
-  /** Auth mode: scripted fake client driving the real AuthProvider. */
+  /** Scripted fake client driving the real AuthProvider. */
   authClient?: SupabaseClient;
-  /** Auth mode: interceptor own-profile probe. */
+  /** Interceptor own-profile probe. */
   getProfile?: () => Promise<{ locked_at: string | null; is_active: boolean } | null>;
-  /** Extra nodes rendered INSIDE AuthProvider but OUTSIDE the RouterProvider (contract probes). */
+  /** Extra nodes rendered INSIDE AuthProvider but OUTSIDE the RouterProvider. */
   extra?: ReactNode;
 }
 
@@ -41,9 +38,23 @@ export function createTestQueryClient(): QueryClient {
   });
 }
 
+/** Inert stand-in when a test does not care about auth state at all. */
+export function inertAuthClient(): SupabaseClient {
+  return {
+    auth: {
+      getSession: async () => ({ data: { session: null }, error: null }),
+      getUser: async () => ({ data: { user: null }, error: { message: "inert" } }),
+      onAuthStateChange: () => ({
+        data: { subscription: { unsubscribe: () => undefined } },
+      }),
+      signOut: async () => ({ error: null }),
+    },
+    functions: { invoke: async () => ({ data: null, error: null }) },
+  } as unknown as SupabaseClient;
+}
+
 export async function renderApp(options: RenderAppOptions = {}) {
   const {
-    session = "unauthenticated",
     initialEntry = "/",
     history = createMemoryHistory({ initialEntries: [initialEntry] }),
     authClient,
@@ -51,8 +62,6 @@ export async function renderApp(options: RenderAppOptions = {}) {
     extra,
     ...renderOptions
   } = options;
-
-  if (!authClient) setSessionState(session);
 
   const queryClient = createTestQueryClient();
   const router = createRouter({ routeTree, history });
@@ -63,18 +72,16 @@ export async function renderApp(options: RenderAppOptions = {}) {
     </QueryClientProvider>
   );
 
-  if (authClient) {
-    tree = (
-      <AuthProvider
-        authClient={authClient}
-        {...(getProfile ? { getProfile } : {})}
-        authRouter={router}
-      >
-        {extra}
-        {tree}
-      </AuthProvider>
-    );
-  }
+  tree = (
+    <AuthProvider
+      {...(authClient ? { authClient } : { authClient: inertAuthClient() })}
+      {...(getProfile ? { getProfile } : {})}
+      authRouter={router}
+    >
+      {extra}
+      {tree}
+    </AuthProvider>
+  );
 
   const utils = render(tree, renderOptions);
   return { ...utils, router, queryClient };

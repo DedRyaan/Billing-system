@@ -1,6 +1,6 @@
 // S1 Sign-in + S2 Bootstrap screen behaviors (plan 03-03 Task 3) - RED.
 
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -55,17 +55,24 @@ describe("LoginScreen (S1)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(copy);
   });
 
-  it("caps-lock hint appears while CapsLock is held on either field", async () => {
+  it("caps-lock hint tracks the modifier state", async () => {
     const client = fakeClientWithInvoke(vi.fn());
     renderWithAuth(<LoginScreen onAuthenticated={vi.fn()} />, client);
     await screen.findByRole("heading", { name: "Sign in" });
     const password = screen.getByLabelText("Password");
-    // jsdom does not implement getModifierState - the component must guard.
-    Object.defineProperty(password, "getModifierState", {
-      value: (key: string) => key === "CapsLock",
-    });
-    await userEvent.type(password, "a");
-    expect(await screen.findByText("Caps Lock is on")).toBeInTheDocument();
+
+    // jsdom lacks getModifierState; hand-build a bubbling native event that
+    // carries the method React's synthetic layer delegates to.
+    const capsEvent = (held: boolean): KeyboardEvent =>
+      Object.assign(new Event("keydown", { bubbles: true, cancelable: true }), {
+        getModifierState: (key: string) => key === "CapsLock" && held,
+      }) as unknown as KeyboardEvent;
+
+    fireEvent(password, capsEvent(true));
+    expect(screen.getByText("Caps Lock is on")).toBeInTheDocument();
+
+    fireEvent(password, capsEvent(false));
+    expect(screen.queryByText("Caps Lock is on")).toBeNull();
   });
 
   it("generic failure renders the SHARED constant copy byte-exact and never a re-typed string", async () => {
