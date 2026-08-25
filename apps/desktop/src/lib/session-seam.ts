@@ -1,10 +1,9 @@
-// Auth branch seam for the route guards (tracer slice).
+// Auth branch seam for the route guards (tracer slice + plan 03-03).
 //
-// The real session provider lands in plan 03-03; until then this module is
-// the single source the beforeLoad guards consult. It lives OUTSIDE React on
-// purpose: TanStack Router's beforeLoad runs outside component scope, so the
-// provider syncs state in via setSessionState and routes read it
-// synchronously.
+// The real session provider lives in src/auth/AuthProvider.tsx; this module
+// is the synchronous source the beforeLoad guards consult. It lives OUTSIDE
+// React on purpose: TanStack Router's beforeLoad runs outside component
+// scope, so the provider syncs state in and routes read it immediately.
 
 export type SessionState = "unauthenticated" | "authenticated";
 
@@ -26,4 +25,21 @@ export function subscribeSession(fn: (state: SessionState) => void): () => void 
   return () => {
     listeners.delete(fn);
   };
+}
+
+/**
+ * First-run bootstrap truth (D-73): 'unknown' while the probe is pending,
+ * 'unbootstrapped' while zero profiles exist (forces /bootstrap instead of
+ * everything), 'bootstrapped' forever after the owner account is minted.
+ */
+export type BootstrapState = "unknown" | "bootstrapped" | "unbootstrapped";
+
+let bootstrap: BootstrapState = "unknown";
+
+export function getBootstrapState(): BootstrapState {
+  return bootstrap;
+}
+
+export function setBootstrapState(next: BootstrapState): void {
+  bootstrap = next;
 }

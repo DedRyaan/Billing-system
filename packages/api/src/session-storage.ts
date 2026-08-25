@@ -35,7 +35,10 @@ export interface TauriStoreStorageOptions {
 const DEFAULT_STORE_NAME = "billing-session.json";
 
 async function defaultLoader(storeName: string): Promise<StoreLike> {
-  const mod = (await import("@tauri-apps/plugin-store")) as {
+  // Structural adaptation of the real plugin-store module onto StoreLike;
+  // `unknown` bridge because the plugin's concrete Store class carries
+  // richer member signatures than this package's minimal seam.
+  const mod = (await import("@tauri-apps/plugin-store")) as unknown as {
     load: (path: string, options?: { autoSave?: boolean }) => Promise<StoreLike>;
   };
   return mod.load(storeName, { autoSave: false });

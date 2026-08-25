@@ -1,7 +1,7 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { getSessionState } from "../lib/session-seam";
+import { createFileRoute } from "@tanstack/react-router";
+import { requireAuthenticatedPreserving } from "../auth/session-guards";
 
-// OWNERSHIP: this stub is REPLACED by plan 03-08 (S5 Customers CRUD - sheet,
+// GUARD: requireAuthenticatedPreserving (03-03). OWNERSHIP: this stub is REPLACED by plan 03-08 (S5 Customers CRUD - sheet,
 // GSTIN auto-fetch machine, state matrix).
 function CustomersStub() {
   return (
@@ -12,8 +12,8 @@ function CustomersStub() {
 }
 
 export const Route = createFileRoute("/customers")({
-  beforeLoad: () => {
-    if (getSessionState() !== "authenticated") throw redirect({ to: "/login" });
-  },
+  beforeLoad: ({ location }) => requireAuthenticatedPreserving(location.pathname),
   component: CustomersStub,
 });
+
+

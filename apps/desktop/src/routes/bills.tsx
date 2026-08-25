@@ -1,5 +1,5 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { getSessionState } from "../lib/session-seam";
+import { createFileRoute } from "@tanstack/react-router";
+import { requireAuthenticatedPreserving } from "../auth/session-guards";
 
 // Placeholder per UI-SPEC Copywriting table (exact copy). Phase 4 replaces
 // this with bill drafting - the shell never restructures (D-66).
@@ -13,8 +13,8 @@ function BillsPlaceholder() {
 }
 
 export const Route = createFileRoute("/bills")({
-  beforeLoad: () => {
-    if (getSessionState() !== "authenticated") throw redirect({ to: "/login" });
-  },
+  beforeLoad: ({ location }) => requireAuthenticatedPreserving(location.pathname),
   component: BillsPlaceholder,
 });
+
+

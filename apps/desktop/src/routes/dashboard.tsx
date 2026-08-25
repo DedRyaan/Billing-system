@@ -1,6 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { getSessionState } from "../lib/session-seam";
-import { redirect } from "@tanstack/react-router";
+import { requireAuthenticatedPreserving } from "../auth/session-guards";
 
 // Placeholder per UI-SPEC Copywriting table (exact copy). Replaced by the
 // real dashboard in Phase 8 - the shell never restructures (D-66).
@@ -14,8 +13,8 @@ function DashboardPlaceholder() {
 }
 
 export const Route = createFileRoute("/dashboard")({
-  beforeLoad: () => {
-    if (getSessionState() !== "authenticated") throw redirect({ to: "/login" });
-  },
+  beforeLoad: ({ location }) => requireAuthenticatedPreserving(location.pathname),
   component: DashboardPlaceholder,
 });
+
+

@@ -24,6 +24,9 @@ importers:
 
   apps/desktop:
     dependencies:
+      '@billing/api':
+        specifier: workspace:*
+        version: link:../../packages/api
       '@radix-ui/react-dialog':
         specifier: ^1.1.6
         version: 1.1.23(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -124,6 +127,9 @@ importers:
       '@supabase/supabase-js':
         specifier: ^2.112.3
         version: 2.112.3
+      '@tauri-apps/plugin-store':
+        specifier: ^2.4.2
+        version: 2.4.4
     devDependencies:
       '@types/node':
         specifier: ^26.3.0

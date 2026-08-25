@@ -1,7 +1,7 @@
-import { createFileRoute, redirect } from "@tanstack/react-router";
-import { getSessionState } from "../lib/session-seam";
+import { createFileRoute } from "@tanstack/react-router";
+import { requireAuthenticatedPreserving } from "../auth/session-guards";
 
-// OWNERSHIP: this stub is REPLACED by plan 03-10 (S8 Settings assembly +
+// GUARD: requireAuthenticatedPreserving (03-03). OWNERSHIP: this stub is REPLACED by plan 03-10 (S8 Settings assembly +
 // S7 Team & memberships for admins).
 function SettingsStub() {
   return (
@@ -12,8 +12,8 @@ function SettingsStub() {
 }
 
 export const Route = createFileRoute("/settings")({
-  beforeLoad: () => {
-    if (getSessionState() !== "authenticated") throw redirect({ to: "/login" });
-  },
+  beforeLoad: ({ location }) => requireAuthenticatedPreserving(location.pathname),
   component: SettingsStub,
 });
+
+
