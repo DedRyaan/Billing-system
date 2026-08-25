@@ -162,6 +162,10 @@ export function derivePlaceOfSupply(input: PosInput): PosResult {
     isValidStateCode(posStateCode); // defensive: never intra against an invalid code
 
   const secondHeadName = secondHeadNameFor(posStateCode);
+  // Defensive narrowing: every slot was validated above, so an unknown code
+  // here is impossible — but the naming lookup is honest about it (undefined,
+  // never an invented 'UTGST' label) and the branch stays total.
+  if (secondHeadName === undefined) return { ok: false, reason: 'UNKNOWN_STATE_CODE' };
   if (sez || !sameState) {
     // Row 12 SEZ proviso: always inter-state → IGST, even within one state.
     return {

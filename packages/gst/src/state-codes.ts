@@ -109,12 +109,16 @@ export function getStateEntry(code: string): StateCodeEntry | undefined {
 /**
  * Name of the second head for an intra-state/UT supply: 'SGST' for states
  * and legislature UTs (A2), 'UTGST' for the non-legislature UTs and Other
- * Territory. Callers must pass a validated code — derivePlaceOfSupply does
- * — unknown codes defensively yield 'UTGST' without throwing.
+ * Territory. Unknown codes yield `undefined` — a plausible-looking default
+ * here could print a wrong statutory label (UTGST vs SGST) on invoices;
+ * callers validate first (derivePlaceOfSupply does) and must treat
+ * `undefined` as the impossible-branch signal it is.
  */
-export function secondHeadNameFor(code: string): 'SGST' | 'UTGST' {
+export function secondHeadNameFor(
+  code: string,
+): 'SGST' | 'UTGST' | undefined {
   const entry = BY_CODE.get(code);
-  if (entry === undefined) return 'UTGST';
+  if (entry === undefined) return undefined;
   if (!entry.isUt) return 'SGST'; // plain states always name SGST
   return entry.isUtWithLegislature ? 'SGST' : 'UTGST';
 }
