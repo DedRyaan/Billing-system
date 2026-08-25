@@ -9,3 +9,5 @@ export {
   serializePaise,
 } from './money';
 export type { ParseFailReason, ParseResult } from './money';
+export { deriveFinancialYear } from './financial-year';
+export type { CalendarDate, FyResult } from './financial-year';
