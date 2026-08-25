@@ -1,0 +1,124 @@
+/* ===========================================================================
+   Design-system tokens - THE single source of every visual value (D-69).
+   Values are BINDING from 03-UI-SPEC (§Design System, §Spacing Scale,
+   §Typography, §Color, §Radius/Elevation/Motion). No ad-hoc hex/px may
+   appear in any component file outside styles/.
+   =========================================================================== */
+
+@theme {
+  /* ---- Color roles (§Color full token table) ---------------------------- */
+  --color-paper: #f5f3ee; /* dominant surface */
+  --color-surface: #ffffff; /* cards, sheets, inputs */
+  --color-sidebar: #eeeae0; /* sidebar bg */
+  --color-sidebar-hover: #e6e1d5;
+  --color-ink: #1a1a18; /* primary text */
+  --color-ink-secondary: #5c574d; /* secondary text, captions */
+  --color-ink-muted: #8a8478; /* placeholders/disabled glyphs ONLY */
+  --color-hairline: #e3ded2; /* 1px borders everywhere */
+  --color-hairline-strong: #d6d0c2; /* input borders at rest */
+  --color-accent: #4a5fe5; /* reserved list only */
+  --color-accent-hover: #3e51cc;
+  --color-accent-subtle: #e9ecfa;
+  --color-success: #3d7a4e;
+  --color-success-subtle: #e4f0e7;
+  --color-warning: #92610c;
+  --color-warning-subtle: #f6ebd9;
+  --color-danger: #c6403c;
+  --color-danger-hover: #ad352f;
+  --color-danger-subtle: #f7e5e3;
+  --color-scrim: rgb(26 26 24 / 0.32);
+
+  /* ---- Spacing scale xs -> 3xl (multiples of 4) -------------------------- */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-sd: 12px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+  --spacing-2xl: 48px;
+  --spacing-3xl: 64px;
+
+  /* ---- Radius ------------------------------------------------------------ */
+  --radius-sm: 6px; /* badges, chips, inline code */
+  --radius-md: 8px; /* inputs, selects, buttons, tooltips */
+  --radius-lg: 12px; /* cards, dialogs, popovers */
+  --radius-xl: 16px; /* sheet left corners, login/bootstrap cards */
+
+  /* ---- Elevation (borders do the work; shadows float only) --------------- */
+  --shadow-popover: 0 4px 16px rgb(26 26 24 / 0.12);
+  --shadow-sheet: -24px 0 64px rgb(26 26 24 / 0.18);
+  --shadow-dialog: 0 12px 40px rgb(26 26 24 / 0.2);
+
+  /* ---- Typography - exactly 4 sizes, exactly 2 weights ------------------- */
+  --font-sans:
+    "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui,
+    -apple-system, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: "SF Mono", "Cascadia Code", Consolas, ui-monospace, monospace;
+
+  --text-display: 28px; /* sign-in/bootstrap headline ONLY */
+  --text-display--line-height: 34px;
+  --text-display--font-weight: 600;
+
+  --text-heading: 16px; /* screen/sheet/dialog titles, empty-state headings */
+  --text-heading--line-height: 19px;
+  --text-heading--font-weight: 600;
+
+  --text-body: 14px; /* cells, inputs, buttons, toasts, banners, body copy */
+  --text-body--line-height: 21px;
+  --text-body--font-weight: 400;
+
+  --text-caption: 12px; /* labels, column headers, helpers, badges */
+  --text-caption--line-height: 16px;
+  --text-caption--font-weight: 400;
+
+  /* ---- Motion ------------------------------------------------------------- */
+  --duration-fast: 120ms; /* hover tints, button presses */
+  --duration-base: 160ms; /* popover/toast opacity+translate */
+  --duration-sheet-enter: 260ms;
+  --duration-sheet-exit: 200ms;
+  --ease-sheet-enter: cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-out-soft: ease-out;
+  --ease-in-soft: ease-in;
+  --animate-skeleton-pulse: skeleton-pulse 1.4s ease-in-out infinite;
+
+  @keyframes skeleton-pulse {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.4;
+    }
+  }
+
+  /* ---- Documented control metrics (exceptions table) ---------------------- */
+  --height-row: 44px; /* table row height */
+  --control-sm: 28px; /* compact buttons, chips */
+  --control-md: 32px; /* default controls */
+  --control-lg: 36px; /* login CTA, primary form submit */
+  --width-sidebar-expanded: 240px;
+  --width-sidebar-rail: 56px;
+  --width-sheet: 520px; /* slide-over editor */
+  --width-switcher-popover: 320px;
+  --width-toast: 360px; /* stack cap 3 enforced by host logic */
+  --width-login-column: 360px;
+  --width-bootstrap-card: 420px;
+}
+
+/* Reduced-motion kill-switch: transforms off; sheets cut/fade only;
+   skeletons hold static 40% opacity. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .animate-skeleton-pulse,
+  [class*="skeleton"] {
+    animation: none !important;
+    opacity: 0.4 !important;
+  }
+}

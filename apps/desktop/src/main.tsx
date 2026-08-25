@@ -4,6 +4,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { readBillingEnv } from "./lib/env";
 import { createAppRouter } from "./router";
+import "./styles/app.css";
 
 // Fail fast before any screen mounts: env problems are construction-time,
 // never mid-session surprises.
