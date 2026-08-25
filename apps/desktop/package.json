@@ -1,0 +1,47 @@
+{
+  "name": "@billing/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Tauri 2 + React 19 desktop shell - the billing app's primary surface.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@radix-ui/react-dialog": "^1.1.6",
+    "@radix-ui/react-popover": "^1.1.6",
+    "@radix-ui/react-tooltip": "^1.1.8",
+    "@supabase/supabase-js": "^2.112.3",
+    "@tanstack/react-query": "^5.102.0",
+    "@tanstack/react-router": "^1.168.35",
+    "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-store": "^2.4.2",
+    "@tauri-apps/plugin-window-state": "^2.4.1",
+    "date-fns": "^4.4.0",
+    "lucide-react": "^1.33.0",
+    "motion": "^13.1.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.0",
+    "@tanstack/router-plugin": "^1.168.35",
+    "@tauri-apps/cli": "^2.11.4",
+    "@testing-library/jest-dom": "^6.6.0",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.0",
+    "@types/node": "^26.3.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.1.0",
+    "jsdom": "^26.0.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.0",
+    "vitest": "^4.1.11"
+  }
+}
