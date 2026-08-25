@@ -213,3 +213,52 @@ describe('computeLine — echoed inputs come back verbatim', () => {
     expect(result.head).toBe('CGST_UTGST');
   });
 });
+
+describe('computeLine — boundary domain gate rejects out-of-contract numerics as data', () => {
+  // divRoundHalfUp's half-up direction is undefined for negative operands
+  // (BigInt / truncates toward zero), so out-of-contract numerics must be
+  // rejected BEFORE any math — never silently computed into plausible garbage.
+  it('negative quantity rejects with NEGATIVE_AMOUNT (never computed)', () => {
+    const result = computeLine(exclusive({ qtyMilli: -1000n }), INTER);
+    expect(result).toEqual({ ok: false, reason: 'NEGATIVE_AMOUNT' });
+  });
+
+  it('negative unit price rejects with NEGATIVE_AMOUNT', () => {
+    const result = computeLine(exclusive({ unitPricePaise: -1n }), INTRA);
+    expect(result).toEqual({ ok: false, reason: 'NEGATIVE_AMOUNT' });
+  });
+
+  it.each([
+    ['discount beyond free — the classic data-entry gap (15000 bps)', 15000n],
+    ['one bps above free', 10001n],
+    ['negative discount', -1n],
+  ])('%s rejects with DISCOUNT_OUT_OF_RANGE', (_label, discountBps) => {
+    const result = computeLine(exclusive({ discountBps }), INTER);
+    expect(result).toEqual({ ok: false, reason: 'DISCOUNT_OUT_OF_RANGE' });
+  });
+
+  it('the CR vector itself (base 10000p x discount 15000) never reaches division', () => {
+    // Before the gate this produced taxable -5000p and truncated "tax" -899n;
+    // now it is a typed rejection under both heads.
+    expect(computeLine(exclusive({ unitPricePaise: 10000n, discountBps: 15000n }), INTRA)).toEqual({
+      ok: false,
+      reason: 'DISCOUNT_OUT_OF_RANGE',
+    });
+    expect(computeLine(exclusive({ unitPricePaise: 10000n, discountBps: 15000n }), INTER)).toEqual({
+      ok: false,
+      reason: 'DISCOUNT_OUT_OF_RANGE',
+    });
+  });
+
+  it('domain gate precedes the slab gate on doubly-invalid lines', () => {
+    const result = computeLine(exclusive({ qtyMilli: -1n, gstRateBps: 1200n }), INTRA);
+    expect(result).toEqual({ ok: false, reason: 'NEGATIVE_AMOUNT' });
+  });
+
+  it('boundary values stay legal: qty/price 0 and free-at-exactly-10000 bps', () => {
+    expect(computeLine(exclusive({ discountBps: 10000n }), INTRA)).toMatchObject({ ok: true });
+    expect(computeLine(exclusive({ qtyMilli: 0n, unitPricePaise: 0n }), INTRA)).toMatchObject({
+      ok: true,
+    });
+  });
+});

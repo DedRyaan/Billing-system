@@ -254,6 +254,48 @@ describe('integration: rejections propagate through totalInvoice with positions'
     expect(result).toEqual({ ok: false, reason: 'NOT_A_CURRENT_SLAB', linePosition: 0 });
   });
 
+  it('negative-amount line rejects through the pipeline naming its position', () => {
+    const result = totalInvoice(
+      [
+        {
+          qtyMilli: 1000n,
+          unitPricePaise: 10000n,
+          discountBps: 0n,
+          pricingMode: 'exclusive',
+          gstRateBps: 1800n,
+          character: 'taxable',
+        },
+        {
+          qtyMilli: -1000n, // negative quantity — upstream data-entry bug class
+          unitPricePaise: 10000n,
+          discountBps: 0n,
+          pricingMode: 'exclusive',
+          gstRateBps: 1800n,
+          character: 'taxable',
+        },
+      ],
+      { head: 'CGST_SGST', registrationType: 'regular', reverseCharge: false },
+    );
+    expect(result).toEqual({ ok: false, reason: 'NEGATIVE_AMOUNT', linePosition: 1 });
+  });
+
+  it('over-free discount (discountBps > 10000) rejects with its position', () => {
+    const result = totalInvoice(
+      [
+        {
+          qtyMilli: 1000n,
+          unitPricePaise: 10000n,
+          discountBps: 15000n, // classic zod-gap vector: would drive taxable negative
+          pricingMode: 'exclusive',
+          gstRateBps: 1800n,
+          character: 'taxable',
+        },
+      ],
+      { head: 'IGST', registrationType: 'regular', reverseCharge: false },
+    );
+    expect(result).toEqual({ ok: false, reason: 'DISCOUNT_OUT_OF_RANGE', linePosition: 0 });
+  });
+
   it('per-line computeLine agrees with the pipeline view of an odd-paisa split', () => {
     const direct = computeLine(
       {

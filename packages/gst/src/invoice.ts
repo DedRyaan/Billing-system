@@ -47,7 +47,7 @@ export interface LineInput {
   /** Quantity in milli-units (<=3 decimals, pre-scaled x1000). */
   qtyMilli: bigint;
   unitPricePaise: bigint;
-  /** Discount in basis points against the line base (10000 = free). */
+  /** Discount in basis points against the line base (10000 = free). Must lie in [0, 10000]; out-of-range values reject typed. */
   discountBps: bigint;
   pricingMode: PricingMode;
   gstRateBps: bigint;
@@ -77,7 +77,9 @@ export interface LineResult {
 
 export type LineOutcome =
   | ({ ok: true } & LineResult)
-  | { ok: false; reason: 'NOT_A_CURRENT_SLAB' };
+  | { ok: false; reason: 'NOT_A_CURRENT_SLAB' }
+  | { ok: false; reason: 'NEGATIVE_AMOUNT' }
+  | { ok: false; reason: 'DISCOUNT_OUT_OF_RANGE' };
 
 /**
  * Compute one invoice line under the given tax head.
@@ -93,11 +95,27 @@ export type LineOutcome =
  *
  * Non-taxable characters short-circuit to zero tax regardless of the rate
  * field (D-60); the slab gate only fires for character 'taxable'.
+ *
+ * Boundary domain gate: qtyMilli and unitPricePaise must be >= 0n and
+ * discountBps in [0, 10000]. `divRoundHalfUp`'s half-up direction is only
+ * defined for non-negative operands, so out-of-contract numerics (a classic
+ * upstream data-entry/zod-gap bug class) reject as TYPED DATA before any
+ * math runs — the engine never executes undefined rounding semantics on
+ * negative taxable values.
  */
 export function computeLine(
   line: LineInput,
   ctx: { head: TaxHead },
 ): LineOutcome {
+  // Domain ranges before anything else — sign/range violations are more
+  // fundamental than rate legality and must not reach any arithmetic.
+  if (line.qtyMilli < 0n || line.unitPricePaise < 0n) {
+    return { ok: false, reason: 'NEGATIVE_AMOUNT' };
+  }
+  if (line.discountBps < 0n || line.discountBps > 10000n) {
+    return { ok: false, reason: 'DISCOUNT_OUT_OF_RANGE' };
+  }
+
   if (!isNonTaxable(line.character)) {
     const gate = assertCatalogRate(line.gstRateBps);
     if (!gate.ok) return { ok: false, reason: gate.reason };
@@ -272,7 +290,9 @@ export type InvoiceTotalsOutcome =
       reason: 'HETEROGENEOUS_TAX_CHARACTER';
       offendingLinePositions: number[];
     }
-  | { ok: false; reason: 'NOT_A_CURRENT_SLAB'; linePosition: number };
+  | { ok: false; reason: 'NOT_A_CURRENT_SLAB'; linePosition: number }
+  | { ok: false; reason: 'NEGATIVE_AMOUNT'; linePosition: number }
+  | { ok: false; reason: 'DISCOUNT_OUT_OF_RANGE'; linePosition: number };
 
 /**
  * Total an invoice draft: uniform-character check propagates (D-61), every
