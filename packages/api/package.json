@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@billing/db-types": "workspace:*",
+    "@billing/gst": "workspace:*",
     "@supabase/supabase-js": "^2.112.3",
     "@tauri-apps/plugin-store": "^2.4.2"
   },
