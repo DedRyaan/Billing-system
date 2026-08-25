@@ -57,11 +57,11 @@ interface FunctionsHttpLikeError {
   context?: { json?: () => Promise<unknown> };
 }
 
-async function errorBody(error: unknown): Promise<{ code?: string } | null> {
+async function errorBody(error: unknown): Promise<unknown | null> {
   const candidate = error as FunctionsHttpLikeError | null;
   if (candidate && typeof candidate === "object" && candidate.context?.json) {
     try {
-      return (await candidate.context.json()) as { code?: string };
+      return (await candidate.context.json()) as unknown;
     } catch {
       return null;
     }
@@ -69,13 +69,25 @@ async function errorBody(error: unknown): Promise<{ code?: string } | null> {
   return null;
 }
 
+/** Extract the error code from either {error:{code}} or flat {code} body shapes. */
+function bodyErrorCode(body: unknown): string | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const record = body as Record<string, unknown>;
+  const nested = record["error"];
+  if (typeof nested === "object" && nested !== null) {
+    const code = (nested as Record<string, unknown>)["code"];
+    if (typeof code === "string") return code;
+  }
+  const code = record["code"];
+  return typeof code === "string" ? code : undefined;
+}
+
 function isGoTrueSessionJSON(value: unknown): value is GoTrueSessionJSON {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  const accessToken = record["access_token"];
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Record<string, unknown>)["access_token"] === "string" &&
-    (value as Record<string, unknown>)["access_token"].length > 0 &&
-    typeof (value as Record<string, unknown>)["refresh_token"] === "string"
+    typeof accessToken === "string" && accessToken.length > 0 && typeof record["refresh_token"] === "string"
   );
 }
 
@@ -106,13 +118,8 @@ export async function signIn(deps: AuthFunctionDeps, input: SignInInput): Promis
   }
 
   if (envelope.error) {
-    const body = await errorBody(envelope.error);
-    if (body?.error && typeof body.error === "object") {
-      const code = (body.error as { code?: string }).code;
-      if (code === "invalid_credentials") return { ok: false, reason: "invalid_credentials" };
-    } else if (typeof body?.code === "string") {
-      if (body.code === "invalid_credentials") return { ok: false, reason: "invalid_credentials" };
-    }
+    const code = bodyErrorCode(await errorBody(envelope.error));
+    if (code === "invalid_credentials") return { ok: false, reason: "invalid_credentials" };
     const name = (envelope.error as { name?: string })?.name ?? "";
     if (!name.includes("Http")) {
       // Relay/transport-class error from the functions runtime.
@@ -229,3 +236,4 @@ export function classifySessionEnd(profile: SessionEndProfile): SessionEndReason
   if (!profile.is_active) return "deactivated";
   return "ended";
 }
+
