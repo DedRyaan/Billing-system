@@ -50,6 +50,8 @@ describe('STATE_CODES — universe shape', () => {
       code: '26',
       name: 'Dadra & Nagar Haveli and Daman & Diu',
     });
+    expect(getStateEntry('31')).toMatchObject({ code: '31', name: 'Lakshadweep' });
+    expect(getStateEntry('36')).toMatchObject({ code: '36', name: 'Telangana' });
     expect(getStateEntry('38')).toMatchObject({ code: '38', name: 'Ladakh' });
     expect(getStateEntry('97')).toMatchObject({ code: '97', name: 'Other Territory' });
   });
@@ -64,10 +66,11 @@ describe('secondHeadNameFor — the A2 naming split', () => {
     ['plain state Karnataka', '29', 'SGST'],
     ['Chandigarh (UT no legislature)', '04', 'UTGST'],
     ['Andaman & Nicobar Islands', '35', 'UTGST'],
-    ['Lakshadweep', '36', 'UTGST'],
+    ['Lakshadweep (official code 31)', '31', 'UTGST'],
     ['DNH and Daman & Diu', '26', 'UTGST'],
     ['Ladakh', '38', 'UTGST'],
     ['Other Territory', '97', 'UTGST'],
+    ['Telangana is a plain STATE (code 36), NOT Lakshadweep', '36', 'SGST'],
   ])('%s names the second head %s', (_label, code, head) => {
     expect(secondHeadNameFor(code)).toBe(head);
   });
