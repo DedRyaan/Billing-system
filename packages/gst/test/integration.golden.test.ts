@@ -208,6 +208,15 @@ describe('integration: RCM flag rides through the whole pipeline unchanged (D-54
 });
 
 describe('integration: rejections propagate through totalInvoice with positions', () => {
+  it('an empty draft rejects typed instead of totaling as a zero Bill of Supply', () => {
+    const result = totalInvoice([], {
+      head: 'CGST_SGST',
+      registrationType: 'regular',
+      reverseCharge: false,
+    });
+    expect(result).toEqual({ ok: false, reason: 'EMPTY_DRAFT' });
+  });
+
   it('heterogeneous draft rejects naming the offending position', () => {
     const result = totalInvoice(
       [

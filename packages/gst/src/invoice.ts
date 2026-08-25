@@ -288,6 +288,7 @@ export interface InvoiceTotals {
 
 export type InvoiceTotalsOutcome =
   | ({ ok: true } & InvoiceTotals)
+  | { ok: false; reason: 'EMPTY_DRAFT' }
   | {
       ok: false;
       reason: 'HETEROGENEOUS_TAX_CHARACTER';
@@ -299,12 +300,14 @@ export type InvoiceTotalsOutcome =
   | { ok: false; reason: 'DISCOUNT_OUT_OF_RANGE'; linePosition: number };
 
 /**
- * Total an invoice draft: uniform-character check propagates (D-61), every
- * line computes under the POS-derived head, each column sums EXACTLY, and
- * the ONLY half-up rounding event in the pipeline applies to the raw grand
- * total as the signed Round Off figure (D-56). Classification and GSTR-1
- * flavor ride along (D-62/D-60); the reverse-charge flag echoes untouched
- * (D-54).
+ * Total an invoice draft: an empty draft rejects typed ('EMPTY_DRAFT' — a
+ * zero-line document is almost certainly an upstream bug worth surfacing,
+ * not an issuable Bill of Supply), uniform-character check propagates
+ * (D-61), every line computes under the POS-derived head, each column sums
+ * EXACTLY, and the ONLY half-up rounding event in the pipeline applies to
+ * the raw grand total as the signed Round Off figure (D-56). Classification
+ * and GSTR-1 flavor ride along (D-62/D-60); the reverse-charge flag echoes
+ * untouched (D-54).
  */
 export function totalInvoice(
   lines: ReadonlyArray<LineInput>,
@@ -314,6 +317,8 @@ export function totalInvoice(
     reverseCharge: boolean;
   },
 ): InvoiceTotalsOutcome {
+  if (lines.length === 0) return { ok: false, reason: 'EMPTY_DRAFT' };
+
   const classification = classifyDraft(lines);
   if (!classification.ok) return classification;
 
