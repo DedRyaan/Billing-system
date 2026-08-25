@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
+import { STATE_CODES, secondHeadNameFor } from '../src/state-codes';
 import { derivePlaceOfSupply } from '../src/place-of-supply';
 import type { PosInput, SupplyKind } from '../src/place-of-supply';
 
 type PosOkResult = Extract<ReturnType<typeof derivePlaceOfSupply>, { ok: true }>;
+
+const ALL_CODES: readonly string[] = STATE_CODES.map((e) => e.code);
 
 /**
  * Place-of-supply → tax-head targeted law rows (INV-02).
@@ -178,4 +181,43 @@ describe('supplyType strings byte-match the invoices.supply_type DB enum', () =>
     // Exact string equality with the migration 0004_documents.sql check constraint values.
     expect(result.supplyType === expectedEnum).toBe(true);
   });
+});
+
+describe('derivePlaceOfSupply — 39x39 totality sweep (T-2-09)', () => {
+  // Every ordered supplier x POS pairing over the full code universe must
+  // return a result: equal codes => intra with the table's naming; unequal
+  // => IGST; SEZ flips equal pairs to IGST. Loop executes fully in-process —
+  // no pairing can hit an unhandled branch at runtime.
+  for (const supplier of ALL_CODES) {
+    for (const pos of ALL_CODES) {
+      const label = supplier + '->' + pos;
+      const input: PosInput = {
+        supplierStateCode: supplier,
+        kind: 'goods_movement',
+        shipToStateCode: pos,
+      };
+
+      it(label + ': plain supply resolves law-correctly', () => {
+        const result = derivePlaceOfSupply(input);
+        if (!result.ok) throw new Error('unexpected rejection: ' + result.reason);
+        expect(result.posStateCode).toBe(pos);
+        if (supplier === pos) {
+          const expectedSecond = secondHeadNameFor(pos);
+          expect(result.supplyType).toBe('intra_state');
+          expect(result.head).toBe(expectedSecond === 'UTGST' ? 'CGST_UTGST' : 'CGST_SGST');
+          expect(result.secondHeadName).toBe(expectedSecond);
+        } else {
+          expect(result.supplyType).toBe('inter_state');
+          expect(result.head).toBe('IGST');
+        }
+      });
+
+      it(label + ': SEZ flip forces IGST', () => {
+        const result = derivePlaceOfSupply({ ...input, sez: true });
+        if (!result.ok) throw new Error('unexpected rejection: ' + result.reason);
+        expect(result.head).toBe('IGST');
+        expect(result.supplyType).toBe('inter_state');
+      });
+    }
+  }
 });
