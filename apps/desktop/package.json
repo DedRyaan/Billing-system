@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@billing/api": "workspace:*",
+    "@billing/gst": "workspace:*",
     "@radix-ui/react-dialog": "^1.1.6",
     "@radix-ui/react-popover": "^1.1.6",
     "@radix-ui/react-tooltip": "^1.1.8",
