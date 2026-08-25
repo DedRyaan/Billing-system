@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { derivePlaceOfSupply } from '../src/place-of-supply';
+import type { PosInput, SupplyKind } from '../src/place-of-supply';
+
+type PosOkResult = Extract<ReturnType<typeof derivePlaceOfSupply>, { ok: true }>;
 
 /**
  * Place-of-supply → tax-head targeted law rows (INV-02).
@@ -32,7 +35,7 @@ describe('derivePlaceOfSupply — targeted law rows', () => {
       { supplierStateCode: '07', kind: 'goods_movement', shipToStateCode: '07' },
       { posStateCode: '07', supplyType: 'intra_state', head: 'CGST_SGST', secondHeadName: 'SGST' },
     ],
-  ])('%s', (_label, input, expected) => {
+  ] as ReadonlyArray<[string, PosInput, Omit<PosOkResult, 'ok'>]>)('%s', (_label, input, expected) => {
     expect(derivePlaceOfSupply(input)).toEqual({ ok: true, ...expected });
   });
 
@@ -92,7 +95,7 @@ describe('derivePlaceOfSupply — targeted law rows', () => {
     ['no-movement slot', 'goods_nomovement'],
     ['installation slot', 'goods_installation'],
     ['on-board slot', 'goods_onboard'],
-  ])('%s maps the governing location onto shipToStateCode', (_label, kind) => {
+  ] as ReadonlyArray<[string, SupplyKind]>)('%s maps the governing location onto shipToStateCode', (_label, kind) => {
     const result = derivePlaceOfSupply({
       supplierStateCode: '27',
       kind,
@@ -160,7 +163,7 @@ describe('derivePlaceOfSupply — unknown codes reject typed', () => {
       kind: 'service',
       recipientRegisteredStateCode: 'ZZ',
     }],
-  ])('%s -> UNKNOWN_STATE_CODE', (_label, input) => {
+  ] as ReadonlyArray<[string, PosInput]>)('%s -> UNKNOWN_STATE_CODE', (_label, input) => {
     expect(derivePlaceOfSupply(input)).toEqual({ ok: false, reason: 'UNKNOWN_STATE_CODE' });
   });
 });
@@ -169,7 +172,7 @@ describe('supplyType strings byte-match the invoices.supply_type DB enum', () =>
   it.each([
     ['intra_state', { supplierStateCode: '27', kind: 'goods_movement', shipToStateCode: '27' }],
     ['inter_state', { supplierStateCode: '27', kind: 'goods_movement', shipToStateCode: '29' }],
-  ])('emits exactly %p', (expectedEnum, input) => {
+  ] as ReadonlyArray<['intra_state' | 'inter_state', PosInput]>)('emits exactly %p', (expectedEnum, input) => {
     const result = derivePlaceOfSupply(input);
     if (!result.ok) throw new Error(`unexpected rejection: ${result.reason}`);
     // Exact string equality with the migration 0004_documents.sql check constraint values.
