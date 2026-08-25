@@ -20,8 +20,8 @@
  * Current-law slab set in basis points (1% = 100 bps).
  *
  * Exactly seven members: {0, 25, 150, 300, 500, 1800, 4000}.
- * Abolished values (1200n / 2800n) appear ONLY in rejection tests — never
- * as accepted constants.
+ * The abolished twelve-percent / twenty-eight-percent values appear ONLY in
+ * rejection tests — never as accepted constants.
  */
 export const CURRENT_SLABS_BPS = [
   0n, 25n, 150n, 300n, 500n, 1800n, 4000n,
