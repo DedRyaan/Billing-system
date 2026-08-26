@@ -15,7 +15,7 @@
 // LIFECYCLE: staff targets ONLY get deactivate/reactivate controls behind
 // verbatim confirms (D-11 scope note lives in strings/team.ts).
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ProfileSummary } from "@billing/api/memberships";
 import {
@@ -180,6 +180,7 @@ export interface PersonSheetProps {
 }
 
 export function PersonSheet({ open, onClose, client, person }: PersonSheetProps) {
+  const queryClient = useQueryClient();
   const [assignedIds, setAssignedIds] = useState<Set<string>>(new Set());
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
   const [confirm, setConfirm] = useState<"deactivate" | "reactivate" | null>(null);
@@ -235,8 +236,14 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
       verb === "deactivate"
         ? await deactivateStaff(client, person.id)
         : await reactivateStaff(client, person.id);
-    if (res.ok) setLifecycleState(verb === "deactivate" ? false : true);
-    else showMutationFailure("member", () => undefined);
+    if (res.ok) {
+      setLifecycleState(verb === "deactivate" ? false : true);
+      // WR-08: the roster table must reflect lifecycle truth immediately -
+      // refetch it instead of waiting for an unrelated invalidation.
+      void queryClient.invalidateQueries({ queryKey: ["memberships", "roster"] });
+    } else {
+      showMutationFailure("member", () => undefined);
+    }
   };
 
   // Peer protection mirror: lifecycle controls exist ONLY for staff targets.
