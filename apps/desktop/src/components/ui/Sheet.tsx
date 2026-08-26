@@ -23,9 +23,15 @@ export interface SheetProps {
   dirty: boolean;
   onSave?: () => void | undefined;
   children: React.ReactNode;
+  /** Read-only mirror mode: footer hidden entirely (detail view, D-75-style). */
+  readOnly?: boolean | undefined;
+  /** Quiet destructive slot rendered at the footer's LEFT edge. */
+  footerLeft?: React.ReactNode | undefined;
+  /** Disables the Save button while the form is invalid/in-flight. */
+  saveDisabled?: boolean | undefined;
 }
 
-export function Sheet({ open, onClose, title, subtitle, dirty, onSave, children }: SheetProps) {
+export function Sheet({ open, onClose, title, subtitle, dirty, onSave, children, readOnly = false, footerLeft, saveDisabled = false }: SheetProps) {
   const [discardOpen, setDiscardOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -134,12 +140,17 @@ export function Sheet({ open, onClose, title, subtitle, dirty, onSave, children 
                     className="flex min-h-0 flex-1 flex-col"
                   >
                     <div className="min-h-0 flex-1 overflow-y-auto p-lg">{children}</div>
-                    <footer className="flex shrink-0 items-center justify-end gap-sm border-t border-hairline bg-surface p-md">
-                      <Button type="button" variant="secondary" onClick={requestClose}>
-                        {CANCEL}
-                      </Button>
-                      <Button type="submit">{SAVE}</Button>
-                    </footer>
+                    {!readOnly && (
+                      <footer className="flex shrink-0 items-center gap-sm border-t border-hairline bg-surface p-md">
+                        <div className="mr-auto">{footerLeft}</div>
+                        <Button type="button" variant="secondary" onClick={requestClose}>
+                          {CANCEL}
+                        </Button>
+                        <Button type="submit" disabled={saveDisabled}>
+                          {SAVE}
+                        </Button>
+                      </footer>
+                    )}
                   </form>
                 </motion.div>
               </Dialog.Content>
