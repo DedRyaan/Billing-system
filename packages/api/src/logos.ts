@@ -96,12 +96,29 @@ export async function uploadLogo(
   }
 }
 
-/** Remove by the same tenant grammar (idempotent best-effort). */
-export async function removeLogo(deps: LogoStorageDeps, businessId: string): Promise<LogoUploadResult> {
+/**
+ * Remove by the same tenant grammar. CR-04: the extension is CALLER-SUPPLIED
+ * (derived from the stored logo_path / upload result) - this module no longer
+ * assumes ".png". Storage errors are DATA here: they surface as a failed
+ * result so callers can toast instead of silently reporting success.
+ */
+export async function removeLogo(
+  deps: LogoStorageDeps,
+  businessId: string,
+  ext: string,
+): Promise<LogoUploadResult> {
   try {
-    const res = await deps.storage.from("logos").remove([logoPath(businessId, "png")]);
-    void res;
-    return { ok: true, path: logoPath(businessId, "png") };
+    const res = await deps.storage.from("logos").remove([logoPath(businessId, ext)]);
+    if (res.error) {
+      return {
+        ok: false,
+        error: {
+          reason: "UNKNOWN",
+          message: (res.error as { message?: string }).message ?? "Removal failed.",
+        },
+      };
+    }
+    return { ok: true, path: logoPath(businessId, ext) };
   } catch {
     return { ok: false, error: { reason: "NETWORK" as const, message: "Removal failed." } };
   }
@@ -114,6 +131,7 @@ export interface SignedUrlPayload {
 export async function createSignedLogoUrl(
   deps: LogoStorageDeps,
   businessId: string,
+  ext: string,
   expiresInSeconds = 300,
 ): Promise<
   | { ok: true; data: SignedUrlPayload }
@@ -123,7 +141,7 @@ export async function createSignedLogoUrl(
   try {
     const res = await deps.storage
       .from("logos")
-      .createSignedUrl(logoPath(businessId, "png"), expiresInSeconds);
+      .createSignedUrl(logoPath(businessId, ext), expiresInSeconds);
     if (res.error) return { ok: false, error: toDataAccessError(res.error) };
     const data = res.data as { signedUrl?: string };
     if (!data?.signedUrl) {

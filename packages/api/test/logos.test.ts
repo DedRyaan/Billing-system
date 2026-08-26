@@ -7,7 +7,10 @@ function fakeStorage() {
     data: { path: "x" },
     error: null,
   }));
-  const remove = vi.fn(async () => ({ data: null, error: null }));
+  const remove = vi.fn(async (): Promise<{ data: unknown; error: unknown }> => ({
+    data: null,
+    error: null,
+  }));
   const createSignedUrl = vi.fn(async () => ({
     data: { signedUrl: "https://signed.example/logo" },
     error: null,
@@ -95,17 +98,38 @@ describe("uploadLogo pre-network gates", () => {
 });
 
 describe("remove/signed-url", () => {
-  it("removes by the same tenant path", async () => {
+  it("removes by the same tenant path for the CALLER-SUPPLIED extension (CR-04)", async () => {
     const f = fakeStorage();
-    await removeLogo(f.deps, "bid-1");
+    await removeLogo(f.deps, "bid-1", "png");
     expect(f.remove).toHaveBeenCalledWith(["businesses/bid-1/logo.png"]);
   });
 
-  it("signed URLs expire in 300s for private rendering", async () => {
+  it("removes svg uploads at THEIR path - never a hardcoded .png", async () => {
     const f = fakeStorage();
-    const res = await createSignedLogoUrl(f.deps, "bid-1");
-    expect(f.createSignedUrl).toHaveBeenCalledWith("businesses/bid-1/logo.png", 300);
+    const res = await removeLogo(f.deps, "bid-1", "svg");
+    expect(f.remove).toHaveBeenCalledWith(["businesses/bid-1/logo.svg"]);
+    expect(res.ok).toBe(true);
+  });
+
+  it("maps storage failures to a failed result instead of silent success (CR-04)", async () => {
+    const f = fakeStorage();
+    f.remove.mockResolvedValueOnce({ data: null, error: { message: "bucket denied" } });
+    const res = await removeLogo(f.deps, "bid-1", "jpg");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.reason).toBe("UNKNOWN");
+  });
+
+  it("signs the caller-supplied extension's object for private rendering", async () => {
+    const f = fakeStorage();
+    const res = await createSignedLogoUrl(f.deps, "bid-1", "jpeg");
+    expect(f.createSignedUrl).toHaveBeenCalledWith("businesses/bid-1/logo.jpeg", 300);
     expect(res.ok).toBe(true);
     if (res.ok) expect(res.data.signedUrl).toContain("https://");
+  });
+
+  it("keeps 300s expiry on png paths (regression)", async () => {
+    const f = fakeStorage();
+    await createSignedLogoUrl(f.deps, "bid-1", "png");
+    expect(f.createSignedUrl).toHaveBeenCalledWith("businesses/bid-1/logo.png", 300);
   });
 });

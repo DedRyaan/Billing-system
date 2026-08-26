@@ -30,6 +30,15 @@ export interface LogoUploadFieldProps {
   onRemoved: () => void;
 }
 
+/** Extension from a stored/uploaded logo path ("businesses/{id}/logo.svg" -> "svg"). */
+function extensionFromPath(path: string | null): string | null {
+  if (path === null) return null;
+  const idx = path.lastIndexOf(".");
+  if (idx === -1) return null;
+  const ext = path.slice(idx + 1).toLowerCase();
+  return ext.length > 0 ? ext : null;
+}
+
 export function LogoUploadField({
   deps,
   businessId,
@@ -43,19 +52,28 @@ export function LogoUploadField({
   const [gateError, setGateError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const lastFileRef = useRef<File | null>(null);
+  // CR-04: the freshest known object path. An upload result wins until the
+  // parent's persisted logo_path propagates back down; the signed URL and
+  // Remove then target the REAL extension instead of a hardcoded .png.
+  const [localPath, setLocalPath] = useState<string | null>(null);
+  const effectivePath = localPath ?? existingPath;
 
-  const loadSignedUrl = useCallback(async () => {
-    if (existingPath === null) {
-      setSignedUrl(null);
-      return;
-    }
-    const res = await createSignedLogoUrl(deps, businessId);
-    setSignedUrl(res.ok ? res.data.signedUrl : null);
-  }, [deps, businessId, existingPath]);
+  const signFor = useCallback(
+    async (path: string | null) => {
+      const ext = extensionFromPath(path);
+      if (ext === null) {
+        setSignedUrl(null);
+        return;
+      }
+      const res = await createSignedLogoUrl(deps, businessId, ext);
+      setSignedUrl(res.ok ? res.data.signedUrl : null);
+    },
+    [deps, businessId],
+  );
 
   useEffect(() => {
-    void loadSignedUrl();
-  }, [loadSignedUrl]);
+    void signFor(effectivePath);
+  }, [signFor, effectivePath]);
 
   const runUpload = async (file: File) => {
     if (uploading) return;
@@ -74,8 +92,9 @@ export function LogoUploadField({
       });
       if (res.ok) {
         lastFileRef.current = file;
+        setLocalPath(res.path);
         onUploaded(res.path);
-        await loadSignedUrl();
+        await signFor(res.path);
       } else if ("reason" in res.error && (res.error.reason === "NETWORK" || res.error.reason === "UNKNOWN")) {
         showMutationFailure("logo", () => {
           if (lastFileRef.current !== null) void runUpload(lastFileRef.current);
@@ -94,7 +113,14 @@ export function LogoUploadField({
   };
 
   const handleRemove = async () => {
-    await removeLogo(deps, businessId);
+    // CR-04: remove the REAL object (extension from the known path) and map
+    // storage errors to the failure toast - never a silent no-op success.
+    const res = await removeLogo(deps, businessId, extensionFromPath(effectivePath) ?? "");
+    if (!res.ok) {
+      showMutationFailure("logo", () => void handleRemove());
+      return;
+    }
+    setLocalPath(null);
     onRemoved();
     setSignedUrl(null);
   };
