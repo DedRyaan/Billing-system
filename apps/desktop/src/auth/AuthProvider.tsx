@@ -37,6 +37,9 @@ export interface ProfileRow {
   role: string;
   is_active: boolean;
   locked_at: string | null;
+  /** Display fields for shell chrome (sidebar footer, Settings). */
+  full_name?: string | null;
+  email?: string | null;
 }
 
 interface AuthRouterLike {
@@ -101,7 +104,7 @@ async function fetchOwnProfileRow(client: SupabaseClient): Promise<ProfileRow | 
     if (!data.user) return null;
     const res = await client
       .from("profiles")
-      .select("id,role,is_active,locked_at")
+      .select("id,role,is_active,locked_at,full_name,email")
       .eq("id", data.user.id)
       .maybeSingle();
     return (res.data as ProfileRow | null) ?? null;
