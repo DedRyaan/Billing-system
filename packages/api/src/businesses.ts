@@ -8,8 +8,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isValidStateCode } from "@billing/gst";
-import { fromPostgrest, type Result } from "./result";
-import { asError } from "./result";
+import { asError, fromPostgrest, type Result } from "./result";
 import type { DataAccessError } from "./errors";
 
 export interface BusinessRow {
