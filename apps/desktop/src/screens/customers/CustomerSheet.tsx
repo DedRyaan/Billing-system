@@ -215,7 +215,7 @@ export function CustomerSheet({
         ...(values.pincode.trim().length > 0 ? { pincode: values.pincode.trim() } : {}),
       };
       if (snapshotRef.current !== null && gstinUpper.length > 0) {
-        address = embedGstinLookup(address, snapshotRef.current);
+        address = embedGstinLookup(address, snapshotRef.current as Record<string, unknown>);
       }
     }
 

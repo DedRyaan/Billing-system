@@ -65,10 +65,6 @@ export function readGstinLookup(address: CustomerAddress | null): Record<string,
 
 type RowEnvelope = { data: unknown; error: unknown };
 
-function toCustomerRows(data: unknown): CustomerRow[] {
-  return Array.isArray(data) ? (data as CustomerRow[]) : [];
-}
-
 export async function listCustomersByBusiness(
   client: SupabaseClient,
   businessId: string,
