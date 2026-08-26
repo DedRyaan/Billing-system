@@ -345,6 +345,7 @@ function customerRowToInitial(row: CustomerRow): Partial<{
   state_code: string;
   notes: string;
   seedSnapshot: Record<string, unknown> | null;
+  raw_address: Record<string, unknown> | null;
 }> {
   return {
     name: row.name,
@@ -362,6 +363,10 @@ function customerRowToInitial(row: CustomerRow): Partial<{
     // seed the auto-fetch machine from the stored _gstin_lookup envelope
     // (no refetch) instead of discarding it.
     seedSnapshot: readGstinLookup(row.address) ?? null,
+    // IN-04: the raw stored address rides along so edit-saves can carry
+    // keys this sheet does not own through the rebuild instead of dropping
+    // them.
+    raw_address: row.address ?? null,
   };
 }
 
@@ -374,6 +379,7 @@ function customerDraftToInitial(draft: NormalizedCustomerForm): Partial<{
   pincode: string;
   state_code: string;
   notes: string;
+  raw_address: Record<string, unknown> | null;
 }> {
   return {
     name: draft.name,
@@ -393,5 +399,8 @@ function customerDraftToInitial(draft: NormalizedCustomerForm): Partial<{
         : "",
     state_code: draft.stateCode,
     notes: draft.notes ?? "",
+    // CR-03 retry path: a previously composed address already contains the
+    // carried foreign keys - it is the freshest raw source for the retry.
+    raw_address: draft.address ?? null,
   };
 }

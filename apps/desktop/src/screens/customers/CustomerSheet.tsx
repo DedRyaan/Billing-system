@@ -9,7 +9,7 @@
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { getStateEntry, validateGstin } from "@billing/gst";
-import { embedGstinLookup } from "@billing/api/customers";
+import { embedGstinLookup, GSTIN_LOOKUP_KEY } from "@billing/api/customers";
 import { Field } from "../../components/ui/Field";
 import { Input, TextArea } from "../../components/ui/Input";
 import { Sheet } from "../../components/ui/Sheet";
@@ -73,6 +73,10 @@ export interface CustomerSheetProps {
     state_code: string;
     notes: string;
     seedSnapshot: SeedSnapshot | null;
+    /** IN-04: the row's raw stored address - keys this sheet does NOT own
+        (anything besides lines/city/pincode/_gstin_lookup) round-trip on
+        save instead of being dropped by the rebuild. */
+    raw_address: Record<string, unknown> | null;
   }>;
   onClose: () => void;
   /** Receives normalized values; return false to keep the sheet open. */
@@ -87,6 +91,16 @@ const DISABLED_LOOKUP_DEPS = {
   lookup: async () => ({ outcome: "not_found" }) as AutoFetchOutcome,
   enabled: false,
 };
+
+// IN-04: the address keys THIS sheet owns - everything else in a stored
+// address jsonb is foreign data that must survive an edit-save untouched
+// (the form never renders it, so the user can never intend to clear it).
+const SHEET_OWNED_ADDRESS_KEYS: ReadonlySet<string> = new Set([
+  "lines",
+  "city",
+  "pincode",
+  GSTIN_LOOKUP_KEY,
+]);
 
 export function CustomerSheet({
   open,
@@ -112,6 +126,9 @@ export function CustomerSheet({
   const [submitting, setSubmitting] = useState(false);
   const touchedRef = useRef<Set<string>>(new Set());
   const snapshotRef = useRef<SeedSnapshot | null>(initial?.seedSnapshot ?? null);
+  // IN-04: the row's ORIGINAL address at open time - a ref, not state; form
+  // edits never touch it and it is read exactly once, at submit compose.
+  const rawAddressRef = useRef<Record<string, unknown> | null>(initial?.raw_address ?? null);
   void businessId; // scope rides in the screen's mutation calls (D-80 explicitness)
 
   const setField = (key: keyof typeof values) => (input: string) => {
@@ -200,9 +217,19 @@ export function CustomerSheet({
       values.pincode.trim().length > 0 ||
       snapshotRef.current !== null;
 
+    // IN-04: foreign keys (anything the sheet does not own) round-trip.
+    // Owned keys are rebuilt ONLY from the form, so clearing a field really
+    // clears it - nothing resurrects out of the raw row through the merge.
+    const carried: Record<string, unknown> = Object.fromEntries(
+      Object.entries(rawAddressRef.current ?? {}).filter(
+        ([k]) => !SHEET_OWNED_ADDRESS_KEYS.has(k),
+      ),
+    );
+
     let address: Record<string, unknown> | null = null;
     if (hasAddress) {
       address = {
+        ...carried,
         ...(values.address_text.trim().length > 0
           ? {
               lines: values.address_text
@@ -217,6 +244,11 @@ export function CustomerSheet({
       if (snapshotRef.current !== null && gstinUpper.length > 0) {
         address = embedGstinLookup(address, snapshotRef.current as Record<string, unknown>);
       }
+    } else if (Object.keys(carried).length > 0) {
+      // Every field this sheet owns was cleared - owned keys go away, but
+      // destroying the whole object would take foreign data down as
+      // collateral. Carry it forward instead of nulling the address.
+      address = carried;
     }
 
     setSubmitting(true);

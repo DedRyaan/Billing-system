@@ -185,4 +185,71 @@ describe("save composition", () => {
     const arg = (onSubmit.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]![0]!;
     expect(arg["address"]).toBeNull();
   });
+
+  // IN-04 deferred half: keys the sheet does NOT own round-trip an edit-save
+  // instead of being dropped by the rebuild; owned keys come ONLY from the
+  // form so stale stored values never resurrect through the merge.
+  it("edit-save carries foreign address keys and rebuilds owned ones from the form", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(async () => true);
+    mount({
+      mode: "edit",
+      onSubmit,
+      initial: {
+        name: "Ravi Kumar",
+        state_code: "27",
+        address_text: "12 MG Road",
+        city: "Pune",
+        pincode: "411001",
+        raw_address: {
+          lines: ["Old Line"],
+          city: "Mumbai",
+          pincode: "400001",
+          landmark: "Near temple",
+          _gstin_lookup: { legalName: "stale envelope" },
+        },
+      },
+    });
+    await user.clear(screen.getByLabelText("City"));
+    await user.type(screen.getByLabelText("City"), "Pune New");
+    const save = screen.getByRole("button", { name: "Save" });
+    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
+    await user.click(save);
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const arg = (onSubmit.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]![0]!;
+    expect(arg["address"]).toEqual({
+      // foreign key preserved verbatim
+      landmark: "Near temple",
+      // owned keys rebuilt ONLY from the form - stale raw values gone,
+      // cleared-then-retyped city reflects the edit
+      lines: ["12 MG Road"],
+      city: "Pune New",
+      pincode: "411001",
+      // stale _gstin_lookup is sheet-owned/reserved: dropped with no fresh
+      // snapshot to embed
+    });
+  });
+
+  it("clearing every owned field still carries foreign keys instead of nulling them away", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(async () => true);
+    mount({
+      mode: "edit",
+      onSubmit,
+      initial: {
+        name: "Ravi Kumar",
+        state_code: "27",
+        address_text: "",
+        city: "",
+        pincode: "",
+        raw_address: { landmark: "Near temple" },
+      },
+    });
+    const save = screen.getByRole("button", { name: "Save" });
+    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
+    await user.click(save);
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const arg = (onSubmit.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]![0]!;
+    expect(arg["address"]).toEqual({ landmark: "Near temple" });
+  });
 });
