@@ -37,15 +37,18 @@ import {
   NUMBERING_LABEL,
   NUMBERING_TEMPLATE_TITLES,
   REGISTRATION_LABEL,
-  REGULAR_CONSEQUENCE,
-  REGULAR_TITLE,
-  SECTION_ADDRESS,
-  SECTION_CONTACT,
-  SECTION_GSTIN,
-  SECTION_IDENTITY,
-  SECTION_LOGO,
-  SECTION_TAX,
-} from "../../lib/strings/businesses";
+   REGULAR_CONSEQUENCE,
+   REGULAR_TITLE,
+   SECTION_ADDRESS,
+   SECTION_CONTACT,
+   SECTION_GSTIN,
+   SECTION_IDENTITY,
+   SECTION_LOGO,
+   SECTION_TAX,
+   SHEET_CREATE_TITLE,
+   SHEET_DETAIL_SUBTITLE,
+   SHEET_EDIT_TITLE,
+ } from "../../lib/strings/businesses";
 import {
   currentFinancialYearLabel,
   gstinLiveCaption,
@@ -188,8 +191,9 @@ export function BusinessSheet({
     <Sheet
       open={open}
       onClose={onClose}
-      title={mode === "create" ? "Add business" : mode === "edit" ? "Edit business" : values.legal_name || "Business"}
-      subtitle={readOnly ? "Read-only — visible to every admin of this business." : undefined}
+      // IN-06: titles come from the strings module - no inline copy drift.
+      title={mode === "create" ? SHEET_CREATE_TITLE : mode === "edit" ? SHEET_EDIT_TITLE : values.legal_name || "Business"}
+      subtitle={readOnly ? SHEET_DETAIL_SUBTITLE : undefined}
       dirty={dirty && !readOnly}
       onSave={() => void handleSubmit()}
       saveDisabled={!formValid || submitting}
