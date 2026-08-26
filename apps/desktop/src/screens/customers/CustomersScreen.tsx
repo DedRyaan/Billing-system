@@ -164,9 +164,49 @@ export function CustomersScreen() {
       if (!res.ok) throw new Error(res.error.message); // denials ride the error channel
       return res.data;
     },
-    onMutate: async () => {
+    // WR-01: GENUINE optimism (UI-SPEC state matrix). Updates project onto
+    // the row NOW; creates append a provisional temp-id row. onSettled
+    // invalidation replaces both with server truth; onError rolls back.
+    onMutate: async ({ values, editingId }) => {
       await qc.cancelQueries({ queryKey: listingKey });
-      return { previous: qc.getQueryData(listingKey) };
+      const previous = qc.getQueryData(listingKey) as CustomerRow[] | undefined;
+      if (previous !== undefined) {
+        if (editingId !== undefined) {
+          qc.setQueryData(
+            listingKey,
+            previous.map((r) =>
+              r.id === editingId
+                ? {
+                    ...r,
+                    name: values.name,
+                    gstin: values.gstin,
+                    phone: values.phone,
+                    address: values.address,
+                    state: values.stateCode,
+                    notes: values.notes,
+                  }
+                : r,
+            ),
+          );
+        } else {
+          const now = new Date().toISOString();
+          const provisional: CustomerRow = {
+            id: `temp-${globalThis.crypto.randomUUID()}`,
+            business_id: businessId ?? "global",
+            name: values.name,
+            gstin: values.gstin,
+            phone: values.phone,
+            address: values.address,
+            state: values.stateCode,
+            notes: values.notes,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+          };
+          qc.setQueryData(listingKey, [...previous, provisional]);
+        }
+      }
+      return { previous };
     },
     onError: (_e, vars, context) => {
       if (context?.previous !== undefined) qc.setQueryData(listingKey, context.previous);
@@ -191,6 +231,9 @@ export function CustomersScreen() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: listingKey });
       setSheet(null);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: listingKey });
     },
   });
 

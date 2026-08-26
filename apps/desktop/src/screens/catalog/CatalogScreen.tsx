@@ -173,9 +173,54 @@ export function CatalogScreen() {
       if (!res.ok) throw new Error(res.error.message);
       return res.data;
     },
-    onMutate: async () => {
+    // WR-01: GENUINE optimism (UI-SPEC state matrix). Updates project onto
+    // the row NOW; creates append a provisional temp-id row. onSettled
+    // invalidation replaces both with server truth; onError rolls back.
+    onMutate: async ({ values, editingId }) => {
       await qc.cancelQueries({ queryKey: listingKey });
-      return { previous: qc.getQueryData(listingKey) };
+      const previous = qc.getQueryData(listingKey) as CatalogItemRow[] | undefined;
+      if (previous !== undefined) {
+        if (editingId !== undefined) {
+          qc.setQueryData(
+            listingKey,
+            previous.map((r) =>
+              r.id === editingId
+                ? {
+                    ...r,
+                    name: values.name,
+                    hsn_sac: values.hsnSac,
+                    gst_rate: bpsToPercentString(values.gstRateBps),
+                    unit: values.unit,
+                    price: serializePaise(values.pricePaise),
+                    mrp:
+                      values.mrpPaise === null
+                        ? null
+                        : serializePaise(values.mrpPaise),
+                    stock_qty: values.stockQty,
+                  }
+                : r,
+            ),
+          );
+        } else {
+          const now = new Date().toISOString();
+          const provisional: CatalogItemRow = {
+            id: `temp-${globalThis.crypto.randomUUID()}`,
+            business_id: businessId ?? "global",
+            name: values.name,
+            hsn_sac: values.hsnSac,
+            gst_rate: bpsToPercentString(values.gstRateBps),
+            unit: values.unit,
+            price: serializePaise(values.pricePaise),
+            mrp: values.mrpPaise === null ? null : serializePaise(values.mrpPaise),
+            stock_qty: values.stockQty,
+            is_active: true,
+            created_at: now,
+            updated_at: now,
+          };
+          qc.setQueryData(listingKey, [...previous, provisional]);
+        }
+      }
+      return { previous };
     },
     onError: (_e, vars, context) => {
       if (context?.previous !== undefined) qc.setQueryData(listingKey, context.previous);
@@ -201,6 +246,9 @@ export function CatalogScreen() {
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: listingKey });
       setSheet(null);
+    },
+    onSettled: () => {
+      void qc.invalidateQueries({ queryKey: listingKey });
     },
   });
 

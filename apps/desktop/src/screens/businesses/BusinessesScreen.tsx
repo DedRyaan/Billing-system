@@ -148,9 +148,52 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
       if (!res.ok) throw new Error(res.error.message);
       return res.data;
     },
-    onMutate: async () => {
+    // WR-01: GENUINE optimism (UI-SPEC state matrix - "Row updates instantly
+    // on Save"). Updates project the edited values onto the row NOW; creates
+    // append a provisional row with a temp id. onSettled invalidation then
+    // replaces both with server truth; onError rolls back to the snapshot.
+    onMutate: async ({ values, editingId }) => {
       await qc.cancelQueries({ queryKey: listingKey });
-      const previous = qc.getQueryData(listingKey);
+      const previous = qc.getQueryData(listingKey) as BusinessRow[] | undefined;
+      if (previous !== undefined) {
+        if (editingId !== undefined) {
+          qc.setQueryData(
+            listingKey,
+            previous.map((r) =>
+              r.id === editingId
+                ? {
+                    ...r,
+                    legal_name: values.legal_name,
+                    trade_name: values.trade_name,
+                    gstin: values.gstin,
+                    address: values.address,
+                    state: values.state,
+                    phone: values.phone,
+                    email: values.email,
+                  }
+                : r,
+            ),
+          );
+        } else {
+          const provisional: BusinessRow = {
+            id: `temp-${globalThis.crypto.randomUUID()}`,
+            legal_name: values.legal_name,
+            trade_name: values.trade_name,
+            gstin: values.gstin,
+            number_format: values.number_format,
+            prefix: values.prefix,
+            address: values.address,
+            state: values.state,
+            phone: values.phone,
+            email: values.email,
+            registration_type: values.registration_type,
+            logo_path: null,
+            archived_at: null,
+            created_at: new Date().toISOString(),
+          };
+          qc.setQueryData(listingKey, [...previous, provisional]);
+        }
+      }
       return { previous };
     },
     onError: (_err, vars, context) => {
@@ -179,6 +222,11 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: listingKey });
       setSheet(null);
+    },
+    onSettled: () => {
+      // Replaces provisional/optimistic rows with server truth in BOTH
+      // outcomes.
+      void qc.invalidateQueries({ queryKey: listingKey });
     },
   });
 
