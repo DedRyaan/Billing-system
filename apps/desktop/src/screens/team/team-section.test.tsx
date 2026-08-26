@@ -3,8 +3,10 @@
 // no other admins because RLS returns none - the UI adds no extra rule but
 // proves the fixture shape). Honesty microcopy + reversible optimistic
 // toggles + keyboard completeness proven headlessly.
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastHost } from "../../shell/ToastHost";
 import userEvent from "@testing-library/user-event";
 import { TeamSection } from "./TeamSection";
 
@@ -53,11 +55,14 @@ function baseFixtures(opts: FixtureOpts = {}): Record<string, unknown> {
   };
 }
 
-function mount(client: ReturnType<typeof import("../../lib/test/fake-client").makeScriptedClient>) {
-  // Lazy require keeps hoisting simple in this file.
-  const { makeScriptedClient } = require("../../lib/test/fake-client") as typeof import("../../lib/test/fake-client");
-  void makeScriptedClient;
-  return render(<TeamSection client={client} />);
+function mount(client: import("../../lib/test/fake-client").ScriptedClient) {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(
+    <QueryClientProvider client={qc}>
+      <TeamSection client={client} />
+      <ToastHost />
+    </QueryClientProvider>,
+  );
 }
 
 async function mountedTeam(opts: FixtureOpts = {}) {
@@ -77,7 +82,7 @@ describe("roster", () => {
       ],
     });
     expect(document.querySelector("[data-testid='datatable']")!.textContent).toContain("Staff");
-    expect(screen.getByText("Active")).toBeTruthy();
+    expect(document.querySelector("[data-testid='datatable']")!.textContent).toContain("Active");
   });
 
   it("overflow caption math at 3+ assignments shows first two plus +n", async () => {
@@ -119,7 +124,8 @@ describe("person sheet membership grid", () => {
     await waitFor(() => expect(screen.getAllByRole("switch").length).toBe(3));
     const alphaChip = screen.getByRole("switch", { name: /Alpha Traders/ });
     expect(alphaChip.getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByText("(archived)").textContent).toBe("(archived)");
+    const archivedChip = screen.getByRole("switch", { name: /Gamma Stores/ });
+    expect(archivedChip.textContent).toContain("(archived)");
     // Zero-membership copy hidden while assigned.
     expect(screen.queryByText("Not assigned anywhere")).toBeNull();
   });
