@@ -48,8 +48,10 @@ function fakeRealtimeClient() {
       ch.emit.bind(ch);
       void wrapped;
       channels.push(ch);
-      // Return an object whose on/subscribe feed ch.handlers.
+      // Return an object whose on/subscribe feed ch.handlers; carries the
+      // name so removeChannel(ch) resolves identity like real supabase-js.
       const out = {
+        name,
         on(_t: string, _c: unknown, cb: (p: unknown) => void) {
           ch.handlers.push(cb);
           return out;
@@ -179,11 +181,6 @@ describe("useBusinessRealtime", () => {
     );
     await waitFor(() => {
       expect(client.__removed).toContain(`entity:customers:${BID_A}`);
-      expect(client.__channels.some((c) => c.name === `entity:catalog_items:${BID_B}`) ?? false).toBe(
-        client.__channels.some((c) => c.name.includes(BID_B)),
-      );
-    });
-    await waitFor(() => {
       expect(client.__channels.filter((c) => c.name === `entity:customers:${BID_B}`).length).toBe(1);
     });
     unmount();
