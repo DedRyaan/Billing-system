@@ -19,6 +19,9 @@ export const keysFor = {
     key("customers", businessId, rest),
   catalogItems: (businessId: BusinessScope, ...rest: readonly unknown[]) =>
     key("catalog_items", businessId, rest),
+  /** Invoice drafts + issued documents, business-scoped (D-81/BIZ-04). */
+  invoices: (businessId: BusinessScope, ...rest: readonly unknown[]) =>
+    key("invoices", businessId, rest),
   /** Scope is a business OR a staff user id depending on the surface. */
   memberships: (scope: BusinessScope, ...rest: readonly unknown[]) =>
     key("memberships", scope, rest),

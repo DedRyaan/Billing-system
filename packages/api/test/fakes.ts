@@ -29,15 +29,20 @@ type Responder = (call: CapturedCall) => { data?: unknown; error?: unknown };
 export interface FakeClientHandle {
   client: SupabaseClient;
   calls: CapturedCall[];
+  functionCalls: Array<{ name: string; body: unknown }>;
   /** Queue the NEXT terminal resolution (data/error). */
   next(data: unknown, error?: unknown): void;
+  /** Queue the NEXT terminal resolution for functions.invoke. */
+  nextFunction(data: unknown, error?: unknown): void;
   channels: Array<{ name: string; config: unknown; subscribed: boolean }>;
   removedChannels: string[];
 }
 
 export function makeClient(): FakeClientHandle {
   const calls: CapturedCall[] = [];
+  const functionCalls: Array<{ name: string; body: unknown }> = [];
   const queue: Array<{ data: unknown; error?: unknown }> = [];
+  const functionQueue: Array<{ data: unknown; error?: unknown }> = [];
   const channels: FakeClientHandle["channels"] = [];
   const removedChannels: string[] = [];
 
@@ -141,6 +146,13 @@ export function makeClient(): FakeClientHandle {
       calls.push({ rpcName: name, rpcArgs: args, filters: [], op: "rpc" });
       return builder(calls[calls.length - 1]!);
     },
+    functions: {
+      invoke(name: string, opts?: { body?: unknown }) {
+        functionCalls.push({ name, body: opts?.body });
+        const res = functionQueue.shift() ?? { data: null, error: null };
+        return Promise.resolve(res);
+      },
+    },
     channel(name: string) {
       calls.push({ channelName: name, filters: [] });
       const handle = { name, config: undefined as unknown, subscribed: false };
@@ -168,10 +180,14 @@ export function makeClient(): FakeClientHandle {
   return {
     client,
     calls,
+    functionCalls,
     channels,
     removedChannels,
     next(data: unknown, error?: unknown) {
       queue.push({ data, error });
+    },
+    nextFunction(data: unknown, error?: unknown) {
+      functionQueue.push({ data, error });
     },
   };
 }
