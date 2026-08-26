@@ -152,7 +152,8 @@ export function useGstinAutoFetch(
 
   useEffect(() => {
     if (!enabled) {
-      setState({ status: "disabled" });
+      // Idempotent: same-object identity keeps React from re-render loops.
+      setState((prev) => (prev.status === "disabled" ? prev : { status: "disabled" }));
       return;
     }
 
@@ -169,7 +170,7 @@ export function useGstinAutoFetch(
 
     if (candidate.length === 0 || !validateGstin(candidate).ok) {
       tokenRef.current += 1; // retire anything pending
-      setState({ status: "idle" });
+      setState((prev) => (prev.status === "idle" ? prev : { status: "idle" }));
       return;
     }
 
@@ -194,14 +195,16 @@ export function useGstinAutoFetch(
         .then((outcome) => {
           if (tokenRef.current !== token) return; // STALE DROP - last-input-wins
           if (outcome.outcome === "verified") {
-            setState({
-              status: "verified",
-              prefill: prefillFromPayload(outcome.payload),
-            });
+            const prefill = prefillFromPayload(outcome.payload);
+            setState((prev) =>
+              prev.status === "verified" && JSON.stringify(prev.prefill) === JSON.stringify(prefill)
+                ? prev
+                : { status: "verified", prefill },
+            );
           } else if (outcome.outcome === "not_found") {
-            setState({ status: "fallback", reason: "not_found" });
+            setState((prev) => (prev.status === "fallback" && prev.reason === "not_found" ? prev : { status: "fallback", reason: "not_found" }));
           } else {
-            setState({ status: "fallback", reason: "failed" }); // timeout counts as failed
+            setState((prev) => (prev.status === "fallback" && prev.reason === "failed" ? prev : { status: "fallback", reason: "failed" })); // timeout counts as failed
           }
         })
         .catch(() => {

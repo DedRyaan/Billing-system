@@ -88,8 +88,13 @@ describe("auto-fetch integration", () => {
       { timeout: 3000 },
     );
     expect((document.getElementById("cust-legal-name") as HTMLInputElement).value).toBe("My Own Name");
-    expect((document.getElementById("cust-city") as HTMLInputElement).value).toBe("Pune");
-    expect((document.getElementById("cust-pincode-input") as HTMLInputElement).value).toBe("411001");
+    // Merged values flush on the render AFTER the hint appears - assert via waitFor.
+    await waitFor(() =>
+      expect((document.getElementById("cust-city") as HTMLInputElement).value).toBe("Pune"),
+    );
+    await waitFor(() =>
+      expect((document.getElementById("cust-pincode") as HTMLInputElement).value).toBe("411001"),
+    );
   });
 
   it("not_found shows the muted fallback hint and never blocks saving", async () => {
