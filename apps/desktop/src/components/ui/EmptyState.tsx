@@ -26,7 +26,7 @@ export function EmptyState({
         {icon}
       </span>
       <h2 className="mt-lg text-heading text-ink">{title}</h2>
-      <p className="mt-xs max-w-[420px] text-body text-ink-secondary">{copy}</p>
+      <p className="mt-xs max-w-(--width-empty-copy) text-body text-ink-secondary">{copy}</p>
       {cta !== undefined && (
         <div className="mt-lg">
           <Button onClick={cta.onClick}>{cta.label}</Button>
@@ -46,7 +46,7 @@ export function ErrorState({ entity, onRetry }: { entity: string; onRetry: () =>
         <TriangleAlert size={40} />
       </span>
       <h2 className="mt-lg text-heading text-ink">{`Couldn't load ${entity}.`}</h2>
-      <p className="mt-xs max-w-[420px] text-body text-ink-secondary">{LOAD_ERROR_BODY}</p>
+      <p className="mt-xs max-w-(--width-empty-copy) text-body text-ink-secondary">{LOAD_ERROR_BODY}</p>
       <div className="mt-lg">
         <Button variant="secondary" onClick={onRetry}>
           {RETRY}

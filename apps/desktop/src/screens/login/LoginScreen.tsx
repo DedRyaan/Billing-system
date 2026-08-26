@@ -113,7 +113,7 @@ export function LoginScreen({ initialReason, redirectTo, onAuthenticated }: Logi
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-paper px-md">
-      <div className="w-[360px]">
+      <div className="w-(--width-login-column)">
         <img src="/branding/monogram-mark-light.svg" alt="Billing monogram" width={48} height={48} />
         <h1 className="mt-lg text-display text-ink">{SIGN_IN_HEADING}</h1>
 

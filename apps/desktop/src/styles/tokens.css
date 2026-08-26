@@ -103,6 +103,8 @@
   --width-toast: 360px; /* stack cap 3 enforced by host logic */
   --width-login-column: 360px;
   --width-bootstrap-card: 420px;
+  --width-confirm-dialog: 420px; /* modal confirm (IN-09) */
+  --width-empty-copy: 420px; /* empty/error state copy column (IN-09) */
 }
 
 /* Reduced-motion kill-switch: transforms off; sheets cut/fade only;

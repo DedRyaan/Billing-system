@@ -95,7 +95,7 @@ export function Sheet({ open, onClose, title, subtitle, dirty, onSave, children,
                   animate={{ x: 0 }}
                   exit={{ x: "100%" }}
                   transition={{ duration: 0.26, ease: [0.32, 0.72, 0, 1] }}
-                  className="fixed inset-y-0 right-0 flex w-[520px] max-w-full flex-col overflow-hidden rounded-l-xl bg-surface"
+                  className="fixed inset-y-0 right-0 flex w-(--width-sheet) max-w-full flex-col overflow-hidden rounded-l-xl bg-surface"
                   style={{ boxShadow: "var(--shadow-sheet)", zIndex: 50 }}
                   onKeyDown={(e) => {
                     // Enter submits the contained form.

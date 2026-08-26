@@ -44,7 +44,7 @@ export function ConfirmDialog({
             e.preventDefault();
             onOpenChange(false);
           }}
-          className="fixed left-1/2 top-1/2 w-[420px] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-hairline bg-surface p-xl shadow-dialog"
+          className="fixed left-1/2 top-1/2 w-(--width-confirm-dialog) max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-hairline bg-surface p-xl shadow-dialog"
         >
           <Dialog.Title className="text-heading text-ink">{title}</Dialog.Title>
           <p className="mt-sm text-body text-ink-secondary">{body}</p>

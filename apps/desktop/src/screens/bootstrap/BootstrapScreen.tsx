@@ -104,7 +104,7 @@ export function BootstrapScreen({
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-paper px-md">
-      <div className="w-[420px] rounded-xl border border-hairline bg-surface p-xl">
+      <div className="w-(--width-bootstrap-card) rounded-xl border border-hairline bg-surface p-xl">
         <img src="/branding/tile-mark-light.svg" alt="Billing tile mark" width={48} height={48} />
         <h1 className="mt-lg text-display text-ink">{BOOTSTRAP_HEADING}</h1>
         <p className="mt-sm text-body text-ink-secondary">{BOOTSTRAP_BODY}</p>
