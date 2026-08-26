@@ -21,10 +21,20 @@ export interface BootstrapStatusDeps {
   createServiceClient?: (url: string, serviceKey: string) => SupabaseClient;
 }
 
+// WR-07: Supabase does NOT inject CORS platform-side. The Tauri webview
+// fetch from origin http://tauri.localhost carrying apikey/content-type
+// headers triggers a preflight - without these headers the CR-01 probe can
+// never succeed in the packaged app. Canonical allow-list per Supabase docs.
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { ...CORS_HEADERS, "content-type": "application/json" },
   });
 }
 
@@ -37,6 +47,10 @@ export async function handleBootstrapStatus(
   req: Request,
   deps: BootstrapStatusDeps = {},
 ): Promise<Response> {
+  // Preflight short-circuit: answer OPTIONS without touching the probe.
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== "POST") {
     return json({ error: { code: "method_not_allowed" } }, 405);
   }

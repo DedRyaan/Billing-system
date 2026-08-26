@@ -102,4 +102,29 @@ describe("handleBootstrapStatus", () => {
     expect(res.status).toBe(200);
     expect(selectOpts).toHaveBeenCalledWith(expect.objectContaining({ head: true, count: "exact" }));
   });
+
+  // WR-07: WebView2 preflight must succeed before the packaged app can probe.
+  it("answers OPTIONS preflight with 204 + CORS headers", async () => {
+    const res = await handleBootstrapStatus(
+      new Request("http://x", { method: "OPTIONS" }),
+      DEPS,
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-headers")).toContain("apikey");
+    expect(res.headers.get("access-control-allow-headers")).toContain("content-type");
+  });
+
+  it("applies CORS headers to every JSON response (200 and errors)", async () => {
+    for (const deps of [
+      DEPS,
+      { env: {} }, // server_misconfigured -> 500
+    ] as const) {
+      const res = await handleBootstrapStatus(post(), deps as never);
+      expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    }
+    const denied = await handleBootstrapStatus(new Request("http://x", { method: "GET" }), DEPS);
+    expect(denied.status).toBe(405);
+    expect(denied.headers.get("access-control-allow-origin")).toBe("*");
+  });
 });
