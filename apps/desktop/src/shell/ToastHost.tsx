@@ -23,14 +23,18 @@ export function ToastHost() {
     <div
       aria-live="polite"
       data-testid="toast-host"
-      className="pointer-events-none fixed bottom-6 right-6 z-[60] flex flex-col gap-sm"
+      className="fixed bottom-6 right-6 z-[60] flex flex-col gap-sm"
     >
       {toasts.map((toast) => (
         <div
           key={toast.id}
           role={toast.variant === "error" ? "alert" : "status"}
           data-toast-variant={toast.variant}
-          className={`pointer-events-auto flex w-(--width-toast) items-start gap-sd rounded-md border border-hairline bg-surface p-sd shadow-popover transition-opacity duration-(--duration-base) ${EDGE_CLASS[toast.variant]}`}
+          // Explicit pointer-events re-enable: Radix modal scroll-lock puts
+          // pe:none on <body>, and toasts MUST stay clickable while any
+          // sheet/dialog is open.
+          style={{ pointerEvents: "auto" }}
+          className={`flex w-(--width-toast) items-start gap-sd rounded-md border border-hairline bg-surface p-sd shadow-popover transition-opacity duration-(--duration-base) ${EDGE_CLASS[toast.variant]}`}
         >
           <span aria-hidden="true" className="mt-0.5 shrink-0">
             {toast.variant === "error" && <AlertCircle size={16} className="text-danger" />}
