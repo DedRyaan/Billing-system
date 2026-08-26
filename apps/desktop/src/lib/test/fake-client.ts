@@ -26,7 +26,9 @@ export interface ScriptedClientOptions {
   channels?: Array<{ name: string; handlers: Array<(p: unknown) => void> }>;
 }
 
-export function makeScriptedClient(options: ScriptedClientOptions = {}): SupabaseClient & ScriptedClientShape {
+export type ScriptedClient = SupabaseClient & ScriptedClientShape;
+
+export function makeScriptedClient(options: ScriptedClientOptions = {}): ScriptedClient {
   const calls: ScriptedCallLog[] = [];
   const channels = options.channels ?? [];
 
@@ -163,7 +165,7 @@ export function makeScriptedClient(options: ScriptedClientOptions = {}): Supabas
   return client;
 }
 
-interface ScriptedClientShape {
+export interface ScriptedClientShape {
   __calls: ScriptedCallLog[];
   __channels: Array<{ name: string; handlers: Array<(p: unknown) => void> }>;
 }
