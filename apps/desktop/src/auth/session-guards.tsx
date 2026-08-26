@@ -19,3 +19,14 @@ export function requireUnauthenticated(): void {
     throw redirect({ to: "/dashboard" });
   }
 }
+
+/**
+ * WR-04: post-login navigation target must be a SAME-ORIGIN absolute PATH.
+ * Protocol-relative values ("//host/..."), backslash tricks ("/\\evil") and
+ * any scheme payload fall back to /dashboard instead of relying on router
+ * internals to throw.
+ */
+export function safeRedirectTarget(target: string | undefined | null): string {
+  if (!target || !/^\/(?!\/)[^\\]*$/.test(target)) return "/dashboard";
+  return target;
+}

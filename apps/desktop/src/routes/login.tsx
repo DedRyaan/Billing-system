@@ -1,5 +1,5 @@
 import { createFileRoute, useRouter } from "@tanstack/react-router";
-import { requireUnauthenticated } from "../auth/session-guards";
+import { requireUnauthenticated, safeRedirectTarget } from "../auth/session-guards";
 import { LoginScreen } from "../screens/login/LoginScreen";
 
 // S1 Sign-in - full-fidelity screen replacing the tracer stub (plan 03-03).
@@ -20,7 +20,8 @@ function LoginPage() {
       {...(search.reason ? { initialReason: search.reason } : {})}
       {...(search.redirect ? { redirectTo: search.redirect } : {})}
       onAuthenticated={(target) => {
-        void router.navigate({ to: target.startsWith("/") ? target : "/dashboard" });
+        // WR-04: never navigate a raw search param.
+        void router.navigate({ to: safeRedirectTarget(target) });
       }}
     />
   );
