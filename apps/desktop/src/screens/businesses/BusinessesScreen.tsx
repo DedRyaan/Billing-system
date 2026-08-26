@@ -68,6 +68,9 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
     | { mode: "edit" | "detail"; row: BusinessRow }
     // Retry-reopen payload keeps failed edits alive (D-81/S4 rollback contract).
     | { mode: "create"; draft: NormalizedBusinessForm; retry: true }
+    // CR-03: a failed EDIT retries as THE SAME edit - identity carried, never
+    // converted into a create.
+    | { mode: "edit"; row: BusinessRow; draft: NormalizedBusinessForm }
     | null
   >(null);
 
@@ -154,7 +157,23 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
       if (context?.previous !== undefined) {
         qc.setQueryData(listingKey, context.previous);
       }
-      const retrying = () => setSheet({ mode: "create", draft: vars.values, retry: true });
+      // CR-03: Retry must re-apply THE SAME operation. A failed edit reopens
+      // edit-mode bound to the same row id (update path); only a failed
+      // create falls back to the create sheet.
+      const editingId = vars.editingId;
+      const retrying = () => {
+        if (editingId !== undefined) {
+          const base =
+            (context?.previous as BusinessRow[] | undefined) ??
+            (qc.getQueryData(listingKey) as BusinessRow[] | undefined);
+          const row = base?.find((r) => r.id === editingId);
+          if (row !== undefined) {
+            setSheet({ mode: "edit", row, draft: vars.values });
+            return;
+          }
+        }
+        setSheet({ mode: "create", draft: vars.values, retry: true });
+      };
       showMutationFailure("business", retrying);
     },
     onSuccess: () => {
@@ -278,23 +297,11 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
           mode={"row" in sheet ? sheet.mode : "create"}
           {...("row" in sheet
             ? {
-                initial: {
-                  legal_name: sheet.row.legal_name,
-                  trade_name: sheet.row.trade_name ?? "",
-                  gstin: sheet.row.gstin,
-                  address_text: readAddressText(sheet.row.address),
-                  city: readAddressCity(sheet.row.address),
-                  pincode: readAddressPincode(sheet.row.address),
-                  state_code: sheet.row.state ?? "",
-                  phone: sheet.row.phone ?? "",
-                  email: sheet.row.email ?? "",
-                  registration_type:
-                    sheet.row.registration_type === "composition"
-                      ? ("composition" as const)
-                      : ("regular" as const),
-                  number_format: sheet.row.number_format as NormalizedBusinessForm["number_format"],
-                  prefix: sheet.row.prefix ?? "",
-                },
+                initial:
+                  "draft" in sheet
+                    ? // CR-03: retried edit - row identity + edited values.
+                      { ...rowToInitial(sheet.row), ...draftToInitial(sheet.draft) }
+                    : rowToInitial(sheet.row),
               }
             : "draft" in sheet
               ? { initial: draftToInitial(sheet.draft) }
@@ -363,6 +370,39 @@ function readAddressPincode(address: Record<string, unknown> | null): string {
   const v = address?.["pincode"];
   return typeof v === "string" ? v : "";
 }
+function rowToInitial(row: BusinessRow): Partial<{
+  legal_name: string;
+  trade_name: string;
+  gstin: string;
+  address_text: string;
+  city: string;
+  pincode: string;
+  state_code: string;
+  phone: string;
+  email: string;
+  registration_type: "regular" | "composition";
+  number_format: NormalizedBusinessForm["number_format"];
+  prefix: string;
+}> {
+  return {
+    legal_name: row.legal_name,
+    trade_name: row.trade_name ?? "",
+    gstin: row.gstin,
+    address_text: readAddressText(row.address),
+    city: readAddressCity(row.address),
+    pincode: readAddressPincode(row.address),
+    state_code: row.state ?? "",
+    phone: row.phone ?? "",
+    email: row.email ?? "",
+    registration_type:
+      row.registration_type === "composition"
+        ? ("composition" as const)
+        : ("regular" as const),
+    number_format: row.number_format as NormalizedBusinessForm["number_format"],
+    prefix: row.prefix ?? "",
+  };
+}
+
 function draftToInitial(draft: NormalizedBusinessForm): Partial<{
   legal_name: string;
   gstin: string;

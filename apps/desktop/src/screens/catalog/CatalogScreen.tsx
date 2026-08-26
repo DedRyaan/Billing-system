@@ -103,6 +103,10 @@ export function CatalogScreen() {
     | { mode: "create" }
     | { mode: "edit"; row: CatalogItemRow }
     | { mode: "detail"; row: CatalogItemRow }
+    // CR-03: failed-create retry keeps the entered draft; failed-edit retry
+    // reopens THE SAME edit - identity carried, never converted.
+    | { mode: "create"; draft: NormalizedCatalogItem }
+    | { mode: "edit"; row: CatalogItemRow; draft: NormalizedCatalogItem }
     | null
   >(null);
 
@@ -175,7 +179,24 @@ export function CatalogScreen() {
     },
     onError: (_e, vars, context) => {
       if (context?.previous !== undefined) qc.setQueryData(listingKey, context.previous);
-      showMutationFailure("item", () => setSheet({ mode: "create" }));
+      // CR-03: Retry re-applies THE SAME operation - a failed edit reopens
+      // edit-mode bound to the same row id with its values; a failed create
+      // reopens create-mode with the entered draft. Neither converts identity.
+      const editingId = vars.editingId;
+      const retrying = () => {
+        if (editingId !== undefined) {
+          const base =
+            (context?.previous as CatalogItemRow[] | undefined) ??
+            (qc.getQueryData(listingKey) as CatalogItemRow[] | undefined);
+          const row = base?.find((r) => r.id === editingId);
+          if (row !== undefined) {
+            setSheet({ mode: "edit", row, draft: vars.values });
+            return;
+          }
+        }
+        setSheet({ mode: "create", draft: vars.values });
+      };
+      showMutationFailure("item", retrying);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: listingKey });
@@ -263,19 +284,15 @@ export function CatalogScreen() {
           itemName={"row" in sheet ? sheet.row.name : undefined}
           {...("row" in sheet
             ? {
-                initial: {
-                  name: sheet.row.name,
-                  kind: guessKind(sheet.row.hsn_sac),
-                  hsn_sac: sheet.row.hsn_sac ?? "",
-                  gst_rate_percent: rateLabel(sheet.row).replace("%", ""),
-                  unit: sheet.row.unit,
-                  price: String(sheet.row.price),
-                  mrp: sheet.row.mrp === null ? "" : String(sheet.row.mrp),
-                  stock_qty: String(sheet.row.stock_qty),
-                  is_active: sheet.row.is_active,
-                },
+                initial:
+                  "draft" in sheet
+                    ? // CR-03: retried edit - row identity + edited values.
+                      { ...catalogRowToInitial(sheet.row), ...catalogDraftToInitial(sheet.draft) }
+                    : catalogRowToInitial(sheet.row),
               }
-            : {})}
+            : "draft" in sheet
+              ? { initial: catalogDraftToInitial(sheet.draft) }
+              : {})}
           onSubmit={async (values) => {
             const editingId = "row" in sheet ? sheet.row.id : undefined;
             try {
@@ -319,4 +336,50 @@ function guessKind(hsnSac: string | null): "goods" | "services" {
   return hsnSac !== null && /^\d{6}$/.test(hsnSac) && hsnSac.startsWith("99")
     ? "services"
     : "goods";
+}
+
+function catalogRowToInitial(row: CatalogItemRow): Partial<{
+  name: string;
+  kind: "goods" | "services";
+  hsn_sac: string;
+  gst_rate_percent: string;
+  unit: string;
+  price: string;
+  mrp: string;
+  stock_qty: string;
+  is_active: boolean;
+}> {
+  return {
+    name: row.name,
+    kind: guessKind(row.hsn_sac),
+    hsn_sac: row.hsn_sac ?? "",
+    gst_rate_percent: rateLabel(row).replace("%", ""),
+    unit: row.unit,
+    price: String(row.price),
+    mrp: row.mrp === null ? "" : String(row.mrp),
+    stock_qty: String(row.stock_qty),
+    is_active: row.is_active,
+  };
+}
+
+function catalogDraftToInitial(draft: NormalizedCatalogItem): Partial<{
+  name: string;
+  kind: "goods" | "services";
+  hsn_sac: string;
+  gst_rate_percent: string;
+  unit: string;
+  price: string;
+  mrp: string;
+  stock_qty: string;
+}> {
+  return {
+    name: draft.name,
+    kind: draft.kind,
+    hsn_sac: draft.hsnSac ?? "",
+    gst_rate_percent: bpsToPercentString(draft.gstRateBps),
+    unit: draft.unit,
+    price: serializePaise(draft.pricePaise),
+    mrp: draft.mrpPaise === null ? "" : serializePaise(draft.mrpPaise),
+    stock_qty: String(draft.stockQty),
+  };
 }

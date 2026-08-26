@@ -61,6 +61,8 @@ export function CustomersScreen() {
     | { mode: "create" }
     | { mode: "edit"; row: CustomerRow }
     | { mode: "create"; draft: NormalizedCustomerForm }
+    // CR-03: a failed EDIT retries as THE SAME edit - identity carried.
+    | { mode: "edit"; row: CustomerRow; draft: NormalizedCustomerForm }
     | null
   >(null);
 
@@ -168,9 +170,23 @@ export function CustomersScreen() {
     },
     onError: (_e, vars, context) => {
       if (context?.previous !== undefined) qc.setQueryData(listingKey, context.previous);
-      showMutationFailure("customer", () =>
-        setSheet({ mode: "create", draft: vars.values }),
-      );
+      // CR-03: Retry re-applies THE SAME operation - a failed edit reopens
+      // edit-mode bound to the same row id; never converted into a create.
+      const editingId = vars.editingId;
+      const retrying = () => {
+        if (editingId !== undefined) {
+          const base =
+            (context?.previous as CustomerRow[] | undefined) ??
+            (qc.getQueryData(listingKey) as CustomerRow[] | undefined);
+          const row = base?.find((r) => r.id === editingId);
+          if (row !== undefined) {
+            setSheet({ mode: "edit", row, draft: vars.values });
+            return;
+          }
+        }
+        setSheet({ mode: "create", draft: vars.values });
+      };
+      showMutationFailure("customer", retrying);
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: listingKey });
@@ -241,37 +257,14 @@ export function CustomersScreen() {
           {...(lookup !== undefined ? { lookup } : {})}
           {...("row" in sheet
             ? {
-                initial: {
-                  name: sheet.row.name,
-                  gstin: sheet.row.gstin ?? "",
-                  phone: sheet.row.phone ?? "",
-                  address_text: Array.isArray(sheet.row.address?.["lines"])
-                    ? (sheet.row.address?.["lines"] as string[]).join("\n")
-                    : "",
-                  city: typeof sheet.row.address?.["city"] === "string" ? String(sheet.row.address["city"]) : "",
-                  pincode: typeof sheet.row.address?.["pincode"] === "string" ? String(sheet.row.address["pincode"]) : "",
-                  state_code: sheet.row.state ?? "",
-                  notes: sheet.row.notes ?? "",
-                },
+                initial:
+                  "draft" in sheet
+                    ? // CR-03: retried edit - row identity + edited values.
+                      { ...customerRowToInitial(sheet.row), ...customerDraftToInitial(sheet.draft) }
+                    : customerRowToInitial(sheet.row),
               }
             : "draft" in sheet
-              ? {
-                  initial: {
-                    name: sheet.draft.name,
-                    gstin: sheet.draft.gstin ?? "",
-                    phone: sheet.draft.phone ?? "",
-                    address_text:
-                      sheet.draft.address !== null && Array.isArray(sheet.draft.address["lines"])
-                        ? (sheet.draft.address["lines"] as string[]).join("\n")
-                        : "",
-                    city:
-                      sheet.draft.address !== null && typeof sheet.draft.address["city"] === "string"
-                        ? String(sheet.draft.address["city"])
-                        : "",
-                    state_code: sheet.draft.stateCode,
-                    notes: sheet.draft.notes ?? "",
-                  },
-                }
+              ? { initial: customerDraftToInitial(sheet.draft) }
               : {})}
           onSubmit={async (values) => {
             const editingId = "row" in sheet ? sheet.row.id : undefined;
@@ -289,4 +282,60 @@ export function CustomersScreen() {
       )}
     </>
   );
+}
+
+function customerRowToInitial(row: CustomerRow): Partial<{
+  name: string;
+  gstin: string;
+  phone: string;
+  address_text: string;
+  city: string;
+  pincode: string;
+  state_code: string;
+  notes: string;
+}> {
+  return {
+    name: row.name,
+    gstin: row.gstin ?? "",
+    phone: row.phone ?? "",
+    address_text: Array.isArray(row.address?.["lines"])
+      ? (row.address?.["lines"] as string[]).join("\n")
+      : "",
+    city: typeof row.address?.["city"] === "string" ? String(row.address["city"]) : "",
+    pincode:
+      typeof row.address?.["pincode"] === "string" ? String(row.address["pincode"]) : "",
+    state_code: row.state ?? "",
+    notes: row.notes ?? "",
+  };
+}
+
+function customerDraftToInitial(draft: NormalizedCustomerForm): Partial<{
+  name: string;
+  gstin: string;
+  phone: string;
+  address_text: string;
+  city: string;
+  pincode: string;
+  state_code: string;
+  notes: string;
+}> {
+  return {
+    name: draft.name,
+    gstin: draft.gstin ?? "",
+    phone: draft.phone ?? "",
+    address_text:
+      draft.address !== null && Array.isArray(draft.address["lines"])
+        ? (draft.address["lines"] as string[]).join("\n")
+        : "",
+    city:
+      draft.address !== null && typeof draft.address["city"] === "string"
+        ? String(draft.address["city"])
+        : "",
+    pincode:
+      draft.address !== null && typeof draft.address["pincode"] === "string"
+        ? String(draft.address["pincode"])
+        : "",
+    state_code: draft.stateCode,
+    notes: draft.notes ?? "",
+  };
 }
