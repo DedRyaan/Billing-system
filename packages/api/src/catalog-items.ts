@@ -7,8 +7,26 @@ import { bpsToPercentString } from "@billing/gst";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { fromPostgrest, type Result } from "./result";
 
-/** App vocabulary for units (A10 master-data scale); UI Select consumes it. */
-export const UNIT_OPTIONS = ["nos", "pcs", "kg", "g", "l", "ml", "m", "box", "set"] as const;
+/**
+ * THE unit vocabulary (A10 master-data scale), verbatim per the UI-SPEC byte
+ * table (IN-03): one source of truth exported through the package door - the
+ * desktop app re-exports it rather than keeping a forked copy. Uppercase
+ * codes render verbatim; catalog_items.unit stays free-text at rest.
+ */
+export const UNIT_OPTIONS = [
+  "PCS",
+  "NOS",
+  "BOX",
+  "SET",
+  "KG",
+  "GMS",
+  "MTR",
+  "LTR",
+  "BDL",
+  "SQF",
+  "TON",
+  "HRS",
+] as const;
 export type UnitOption = (typeof UNIT_OPTIONS)[number];
 
 export interface CatalogItemRow {

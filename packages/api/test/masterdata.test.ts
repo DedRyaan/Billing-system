@@ -104,9 +104,21 @@ describe("customers", () => {
 });
 
 describe("catalog-items", () => {
-  it("UNIT_OPTIONS is a typed non-empty constant", () => {
-    expect(UNIT_OPTIONS.length).toBeGreaterThan(3);
-    expect(UNIT_OPTIONS).toContain("nos");
+  it("UNIT_OPTIONS is the single 12-unit uppercase vocabulary (IN-03)", () => {
+    expect(UNIT_OPTIONS).toEqual([
+      "PCS",
+      "NOS",
+      "BOX",
+      "SET",
+      "KG",
+      "GMS",
+      "MTR",
+      "LTR",
+      "BDL",
+      "SQF",
+      "TON",
+      "HRS",
+    ]);
   });
 
   it("create converts gstRateBps via bpsToPercentString and pricePaise to numeric(14,2)", async () => {

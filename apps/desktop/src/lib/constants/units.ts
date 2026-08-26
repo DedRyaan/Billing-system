@@ -1,22 +1,7 @@
-// App-level unit vocabulary for the S6 catalog (plan 03-09 Task 1).
+// Unit vocabulary for the S6 catalog (plan 03-09 Task 1).
 //
-// This is the UI's Select list per the S6 field order - DISTINCT from any
-// storage-side vocabulary: catalog_items.unit is a free text column, so the
-// app constant is the single source for what users may pick. Uppercase codes
-// render verbatim in the table's Unit column.
-export const UNIT_OPTIONS = [
-  "PCS",
-  "NOS",
-  "BOX",
-  "SET",
-  "KG",
-  "GMS",
-  "MTR",
-  "LTR",
-  "BDL",
-  "SQF",
-  "TON",
-  "HRS",
-] as const;
-
-export type UnitOption = (typeof UNIT_OPTIONS)[number];
+// IN-03: this is now a RE-EXPORT of the package's single vocabulary
+// (@billing/api/catalog-items) instead of a forked app-side copy - the two
+// lists can never drift again. Uppercase codes render verbatim in the
+// table's Unit column; the storage column stays free text.
+export { UNIT_OPTIONS, type UnitOption } from "@billing/api/catalog-items";
