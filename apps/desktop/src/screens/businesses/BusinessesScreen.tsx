@@ -354,7 +354,7 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
             : {})}
         />
       )}
-`n    </>
+    </>
   );
 }
 
