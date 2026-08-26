@@ -94,7 +94,7 @@ export function TeamSection({ client }: TeamSectionProps) {
   const [openPerson, setOpenPerson] = useState<EnrichedProfile | null>(null);
 
   const roster = useQuery({
-    queryKey: ["memberships", "roster"] as const,
+    queryKey: keysFor.membershipsRoster(),
     queryFn: async () => {
       if (!client) throw new Error("no client");
       const res = await listRosterForAdmin(client);
@@ -240,7 +240,7 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
       setLifecycleState(verb === "deactivate" ? false : true);
       // WR-08: the roster table must reflect lifecycle truth immediately -
       // refetch it instead of waiting for an unrelated invalidation.
-      void queryClient.invalidateQueries({ queryKey: ["memberships", "roster"] });
+      void queryClient.invalidateQueries({ queryKey: keysFor.membershipsRoster() });
     } else {
       showMutationFailure("member", () => undefined);
     }

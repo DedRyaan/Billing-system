@@ -22,4 +22,9 @@ export const keysFor = {
   /** Scope is a business OR a staff user id depending on the surface. */
   memberships: (scope: BusinessScope, ...rest: readonly unknown[]) =>
     key("memberships", scope, rest),
+  /**
+   * Admin roster (IN-01): global-scope so business switches never sweep it.
+   * Factory-owned per D-81 - TeamSection may not hand-roll this tuple.
+   */
+  membershipsRoster: () => key("memberships", GLOBAL_BUSINESS, ["roster"]),
 } as const;
