@@ -33,6 +33,8 @@ export interface DataTableProps<T> {
   searchPlaceholder?: string | undefined;
   primaryAction?: React.ReactNode | undefined;
   emptyState?: React.ReactNode | undefined;
+  /** Optional per-row class (e.g. muted styling for inactive items). */
+  getRowClassName?: ((row: T) => string) | undefined;
 }
 
 type SortDir = "asc" | "desc";
@@ -51,6 +53,7 @@ export function DataTable<T>({
   searchPlaceholder = "Search",
   primaryAction,
   emptyState,
+  getRowClassName,
 }: DataTableProps<T>) {
   const [rawQuery, setRawQuery] = useState("");
   const [query] = useDebouncedValue(rawQuery, 200);
@@ -171,7 +174,7 @@ export function DataTable<T>({
                     onRowActivate?.(row);
                   }
                 }}
-                className="h-(--height-row) cursor-pointer border-b border-hairline transition-colors duration-(--duration-fast) hover:bg-surface focus-visible:bg-accent-subtle focus-visible:outline-none"
+                className={`h-(--height-row) cursor-pointer border-b border-hairline transition-colors duration-(--duration-fast) hover:bg-surface focus-visible:bg-accent-subtle focus-visible:outline-none ${getRowClassName !== undefined ? getRowClassName(row) : ""}`}
               >
                 {columns.map((col, idx) => {
                   const raw = String(row[col.key] ?? "");

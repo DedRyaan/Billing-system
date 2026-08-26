@@ -52,7 +52,7 @@ export interface ItemSheetProps {
   mode: ItemSheetMode;
   initial?: Partial<CatalogFormValues> & { is_active?: boolean };
   /** Name used in confirm titles. */
-  itemName?: string;
+  itemName?: string | undefined;
   onClose: () => void;
   onSubmit: (values: NormalizedCatalogItem) => Promise<boolean> | boolean;
   onDeactivate?: () => void;
