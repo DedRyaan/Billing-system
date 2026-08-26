@@ -115,10 +115,14 @@ describe("LoginScreen (S1)", () => {
 
   it("submitting locks the form, success adopts session and navigates intended path", async () => {
     let release!: (v: unknown) => void;
-    const invoke = vi.fn().mockReturnValue(
-      new Promise((resolve) => {
-        release = resolve;
-      }),
+    // The D-73 bootstrap probe rides the same functions transport at boot
+    // (CR-01) - answer it immediately; only the sign-in call stays pending.
+    const invoke = vi.fn((fn: string) =>
+      fn === "bootstrap-status"
+        ? Promise.resolve({ data: { bootstrapped: true }, error: null })
+        : new Promise((resolve) => {
+            release = resolve;
+          }),
     );
     const onAuthenticated = vi.fn();
     renderWithAuth(

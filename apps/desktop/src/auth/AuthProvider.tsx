@@ -26,7 +26,7 @@ import { createBillingClient } from "@billing/api/client";
 import { resolveSessionStorage } from "@billing/api/session-storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { readBillingEnv } from "../lib/env";
-import { setSessionState } from "../lib/session-seam";
+import { setBootstrapState, setSessionState } from "../lib/session-seam";
 import {
   startAuthFailureInterceptor,
   withAuthFailureSuppressed,
@@ -54,6 +54,11 @@ export interface AuthProviderProps {
   getProfile?: () => Promise<{ locked_at: string | null; is_active: boolean } | null>;
   /** Router handle for imperative post-signout / failure navigation. */
   authRouter?: AuthRouterLike;
+  /**
+   * Injected D-73 first-run probe (tests script the answer). Default invokes
+   * the deployed bootstrap-status Edge Function over this provider's client.
+   */
+  bootstrapProbe?: () => Promise<boolean>;
 }
 
 type Phase =
@@ -113,7 +118,53 @@ async function fetchOwnProfileRow(client: SupabaseClient): Promise<ProfileRow | 
   }
 }
 
-export function AuthProvider({ children, authClient, getProfile, authRouter }: AuthProviderProps) {
+/**
+ * D-73 server truth: does ANY profile exist? Anon-safe single-boolean Edge
+ * Function (T-3-11). Throws on transport/payload failure - the caller holds
+ * the seam at 'unknown' so guards degrade open instead of misrouting launch.
+ * Bounded: supabase-js invoke has no default timeout, and a hung probe must
+ * never hold the restoring gate shut.
+ */
+const BOOTSTRAP_PROBE_TIMEOUT_MS = 4000;
+
+async function probeBootstrapStatus(client: SupabaseClient): Promise<boolean> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const invoke = client.functions.invoke("bootstrap-status", { body: {} });
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("bootstrap-status probe timed out")),
+        BOOTSTRAP_PROBE_TIMEOUT_MS,
+      );
+    });
+    const envelope = (await Promise.race([invoke, timeout])) as {
+      data?: unknown;
+      error?: unknown;
+    };
+    if (envelope.error !== null && envelope.error !== undefined) {
+      throw new Error("bootstrap-status probe failed");
+    }
+    const payload = envelope.data;
+    if (
+      typeof payload !== "object" ||
+      payload === null ||
+      typeof (payload as { bootstrapped?: unknown }).bootstrapped !== "boolean"
+    ) {
+      throw new Error("bootstrap-status returned an unusable payload");
+    }
+    return (payload as { bootstrapped: boolean }).bootstrapped;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
+export function AuthProvider({
+  children,
+  authClient,
+  getProfile,
+  authRouter,
+  bootstrapProbe,
+}: AuthProviderProps) {
   const [phase, setPhase] = useState<Phase>({ status: "restoring" });
   const [session, setSession] = useState<GoTrueSessionJSON | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
@@ -147,13 +198,28 @@ export function AuthProvider({ children, authClient, getProfile, authRouter }: A
       }
       const restored = await restoreSession(client);
       if (cancelled) return;
+      // D-73 first-run truth (CR-01): settle the bootstrap seam BEFORE the
+      // restoring gate lifts, so every route guard sees server truth on the
+      // FIRST navigation - fresh installs land on /bootstrap; established
+      // installs make /bootstrap unreachable forever (state no longer resets
+      // to 'unknown' every launch).
+      try {
+        const bootstrapped = bootstrapProbe
+          ? await bootstrapProbe()
+          : await probeBootstrapStatus(client);
+        if (!cancelled) setBootstrapState(bootstrapped ? "bootstrapped" : "unbootstrapped");
+      } catch {
+        // Probe unreachable (offline launch / function down): hold 'unknown'.
+        // Guards degrade open - no forced /bootstrap on a flaky network.
+      }
+      if (cancelled) return;
       setPhase({ status: restored.status, client });
       setSessionState(restored.status);
     })();
     return () => {
       cancelled = true;
     };
-  }, [authClient]);
+  }, [authClient, bootstrapProbe]);
 
   // Server-controlled profile fetch once authenticated (role source of truth).
   useEffect(() => {
