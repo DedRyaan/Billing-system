@@ -11,10 +11,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen, waitFor, act } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import type { ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { GLOBAL_BUSINESS, keysFor } from "@billing/api/query-keys";
+import { keysFor } from "@billing/api/query-keys";
 import {
   ActiveBusinessProvider,
   useActiveBusiness,
@@ -47,22 +46,18 @@ function fakeDataClient(businesses: unknown[], error?: unknown) {
       return b;
     },
     channel(name: string) {
-      const ch: EmittedChannel & {
-        on: () => unknown;
-        subscribe: () => unknown;
-      } = {
-        name,
-        handlers: [],
-        on(this: EmittedChannel, _t: string, _c: unknown, cb: (p: unknown) => void) {
-          this.handlers.push(cb);
-          return this;
+      const ch: EmittedChannel = { name, handlers: [] };
+      channels.push(ch);
+      const chain = {
+        on(_t: string, _c: unknown, cb: (p: unknown) => void) {
+          ch.handlers.push(cb);
+          return chain;
         },
         subscribe() {
-          return this;
+          return chain;
         },
       };
-      channels.push(ch);
-      return ch;
+      return chain;
     },
     removeChannel(ch: { name?: string }) {
       removed.push(ch?.name ?? "?");

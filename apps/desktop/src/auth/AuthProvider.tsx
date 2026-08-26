@@ -63,6 +63,12 @@ export interface AuthContextValue {
   session: GoTrueSessionJSON | null;
   profile: ProfileRow | null;
   /**
+   * The authenticated transport for @billing/api modules (D-79 single door
+   * into Supabase). Null while restoring or when no client could be built;
+   * consumers gate on it instead of constructing their own clients.
+   */
+  client: SupabaseClient | null;
+  /**
    * THE permission predicate source (T-3-10): resolved from the
    * server-controlled profiles row via RLS - never JWT metadata.
    */
@@ -238,18 +244,24 @@ export function AuthProvider({ children, authClient, getProfile, authRouter }: A
     [],
   );
 
+  // Null while restoring (no half-auth transport exposure); otherwise the
+  // phase's client - even unauthenticated keeps its (inert) client reference
+  // for sign-in retry paths.
+  const dataClient = phase.status === "restoring" ? null : phase.client;
+
   const value = useMemo<AuthContextValue>(
     () => ({
       status: phase.status,
       session,
       profile,
+      client: dataClient,
       role: profile?.role ?? null,
       signOut,
       signInWithPassword,
       adoptReturnedSession,
       invokeFunction,
     }),
-    [phase.status, session, profile, signOut, signInWithPassword, adoptReturnedSession, invokeFunction],
+    [phase.status, dataClient, session, profile, signOut, signInWithPassword, adoptReturnedSession, invokeFunction],
   );
 
   return (
