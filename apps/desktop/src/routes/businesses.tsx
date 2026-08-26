@@ -1,43 +1,23 @@
-import { useEffect, useState } from "react";
+import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { requireAuthenticatedPreserving } from "../auth/session-guards";
 import { BusinessesScreen } from "../screens/businesses/BusinessesScreen";
-import { createBillingClient } from "@billing/api/client";
-import { readBillingEnv } from "../lib/env";
-import { resolveSessionStorage } from "@billing/api/session-storage";
+import { useAuth } from "../auth/AuthProvider";
 import type { LogoStorageDeps } from "@billing/api/logos";
 
-// S4 Businesses (plan 03-07): guard + real screen. Logo storage deps build
-// lazily from the env client (D-79 single door); headless tests inject
-// doubles through BusinessesScreen's logoDeps prop instead.
-let logoDepsPromise: Promise<LogoStorageDeps> | null = null;
-
-function resolveLogoDeps(): Promise<LogoStorageDeps> {
-  logoDepsPromise ??= (async () => {
-    const storage = await resolveSessionStorage();
-    const client = createBillingClient(
-      readBillingEnv(import.meta.env as unknown as Record<string, unknown>),
-      { storage },
-    );
-    return { storage: client.storage };
-  })();
-  return logoDepsPromise;
-}
-
+// S4 Businesses (plan 03-07): guard + real screen.
+//
+// WR-06 (D-79 single door): logo storage deps derive from THE provider's
+// authenticated client - this route no longer constructs its own
+// createBillingClient (a divergent GoTrue instance could ride a stale access
+// token after an in-app sign-out/sign-in). Tests inject doubles through
+// BusinessesScreen's logoDeps prop instead.
 function BusinessesRoute() {
-  const [logoDeps, setLogoDeps] = useState<LogoStorageDeps | null>(null);
-
-  useEffect(() => {
-    let mounted = true;
-    resolveLogoDeps()
-      .then((deps) => {
-        if (mounted) setLogoDeps(deps);
-      })
-      .catch(() => undefined); // env problems surface elsewhere; upload stays hidden
-    return () => {
-      mounted = false;
-    };
-  }, []);
+  const auth = useAuth();
+  const logoDeps = useMemo<LogoStorageDeps | null>(
+    () => (auth.client !== null ? { storage: auth.client.storage } : null),
+    [auth.client],
+  );
 
   return <BusinessesScreen {...(logoDeps !== null ? { logoDeps } : {})} />;
 }
