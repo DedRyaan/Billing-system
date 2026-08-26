@@ -9,6 +9,7 @@ import { render, type RenderOptions } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { AuthProvider } from "../../auth/AuthProvider";
+import { CacheJanitor } from "../../auth/CacheJanitor";
 import { routeTree } from "../../routeTree.gen";
 
 // Headless mount of the FULL production provider stack: AuthProvider wraps
@@ -79,7 +80,10 @@ export async function renderApp(options: RenderAppOptions = {}) {
       authRouter={router}
     >
       {extra}
-      {tree}
+      <QueryClientProvider client={queryClient}>
+        <CacheJanitor />
+        <RouterProvider router={router} />
+      </QueryClientProvider>
     </AuthProvider>
   );
 

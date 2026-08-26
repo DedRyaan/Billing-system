@@ -3,6 +3,7 @@ import { RouterProvider } from "@tanstack/react-router";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { AuthProvider } from "./auth/AuthProvider";
+import { CacheJanitor } from "./auth/CacheJanitor";
 import { readBillingEnv } from "./lib/env";
 import { createAppRouter } from "./router";
 import "./styles/app.css";
@@ -22,6 +23,7 @@ createRoot(container).render(
   <StrictMode>
     <AuthProvider authRouter={router}>
       <QueryClientProvider client={queryClient}>
+        <CacheJanitor />
         <RouterProvider router={router} />
       </QueryClientProvider>
     </AuthProvider>
