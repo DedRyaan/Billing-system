@@ -273,6 +273,9 @@ export function BusinessSheet({
               ]}
               value={values.registration_type}
               onValueChange={(v) => set("registration_type", v as BusinessFormValues["registration_type"])}
+              // WR-05: registration type is a create-only fact - the patch
+              // builder drops it on update, so it must not look editable.
+              disabled={readOnly || editLocked}
             />
           </div>
           <div>
@@ -282,6 +285,8 @@ export function BusinessSheet({
               options={numberingOptions}
               value={values.number_format}
               onValueChange={(v) => set("number_format", v as BusinessFormValues["number_format"])}
+              // WR-05: numbering template is a create-only fact.
+              disabled={readOnly || editLocked}
             />
             <p className="mt-xs font-mono text-caption text-ink-secondary" data-testid="numbering-preview">
               {previewNumbering(values.number_format, values.prefix, fy)}

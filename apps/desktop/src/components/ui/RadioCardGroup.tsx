@@ -14,13 +14,15 @@ export interface RadioCardGroupProps {
   options: readonly RadioCardOption[];
   value: string;
   onValueChange: (v: string) => void;
+  /** WR-05: create-only facts disable the whole group in edit mode. */
+  disabled?: boolean;
 }
 
-export function RadioCardGroup({ name, options, value, onValueChange }: RadioCardGroupProps) {
+export function RadioCardGroup({ name, options, value, onValueChange, disabled = false }: RadioCardGroupProps) {
   const baseId = useId();
 
   return (
-    <div role="radiogroup" className="flex flex-col gap-sm">
+    <div role="radiogroup" aria-disabled={disabled || undefined} className="flex flex-col gap-sm">
       {options.map((o, idx) => {
         const selected = o.value === value;
         return (
@@ -29,8 +31,9 @@ export function RadioCardGroup({ name, options, value, onValueChange }: RadioCar
             key={o.value}
             htmlFor={`${baseId}-${o.value}`}
             data-arrow-target={selected ? "" : undefined}
-            tabIndex={selected ? -1 : idx === 0 ? -1 : -1}
+            tabIndex={-1}
             onKeyDown={(e) => {
+              if (disabled) return;
               if (e.key === "ArrowDown" || e.key === "ArrowUp") {
                 e.preventDefault();
                 const dir = e.key === "ArrowDown" ? 1 : -1;
@@ -40,10 +43,16 @@ export function RadioCardGroup({ name, options, value, onValueChange }: RadioCar
                 document.getElementById(`${baseId}-${next.value}`)?.focus();
               }
             }}
-            className={`flex cursor-pointer items-start gap-sm rounded-md border p-md transition-colors duration-(--duration-fast) ${
-              selected
+            className={`flex items-start gap-sm rounded-md border p-md transition-colors duration-(--duration-fast) ${
+              disabled
+                ? "cursor-not-allowed border-hairline-strong bg-surface opacity-60"
+                : "cursor-pointer"
+            } ${
+              !disabled && selected
                 ? "border-accent bg-accent-subtle"
-                : "border-hairline-strong bg-surface hover:bg-paper"
+                : !disabled
+                  ? "border-hairline-strong bg-surface hover:bg-paper"
+                  : ""
             }`}
           >
             <input
@@ -53,6 +62,7 @@ export function RadioCardGroup({ name, options, value, onValueChange }: RadioCar
               value={o.value}
               checked={selected}
               onChange={() => onValueChange(o.value)}
+              disabled={disabled}
               className="mt-xs h-(--spacing-sd) w-(--spacing-sd) accent-[var(--color-accent)]"
             />
             <span>
