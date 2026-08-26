@@ -10,7 +10,7 @@ import { format } from "date-fns";
 import { enIN } from "date-fns/locale";
 import { Users } from "lucide-react";
 import type { CustomerRow } from "@billing/api/customers";
-import { createCustomer, listCustomersByBusiness, updateCustomer } from "@billing/api/customers";
+import { createCustomer, listCustomersByBusiness, readGstinLookup, updateCustomer } from "@billing/api/customers";
 import { fetchGstinParty, type NormalizedParty } from "@billing/api/gstin-lookup";
 import { keysFor } from "@billing/api/query-keys";
 import { getStateEntry } from "@billing/gst";
@@ -344,6 +344,7 @@ function customerRowToInitial(row: CustomerRow): Partial<{
   pincode: string;
   state_code: string;
   notes: string;
+  seedSnapshot: Record<string, unknown> | null;
 }> {
   return {
     name: row.name,
@@ -357,6 +358,10 @@ function customerRowToInitial(row: CustomerRow): Partial<{
       typeof row.address?.["pincode"] === "string" ? String(row.address["pincode"]) : "",
     state_code: row.state ?? "",
     notes: row.notes ?? "",
+    // IN-04: reopen a previously verified customer AS the verified state -
+    // seed the auto-fetch machine from the stored _gstin_lookup envelope
+    // (no refetch) instead of discarding it.
+    seedSnapshot: readGstinLookup(row.address) ?? null,
   };
 }
 
