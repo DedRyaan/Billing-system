@@ -117,8 +117,7 @@ export function makeScriptedClient(options: ScriptedClientOptions = {}): Scripte
       return run(table);
     },
     rpc(name: string, args?: unknown) {
-      void name;
-      void args;
+      calls.push({ table: `rpc:${name}`, op: "select", filters: [], payload: args });
       return Promise.resolve({ data: null, error: null });
     },
     channel(name: string) {
