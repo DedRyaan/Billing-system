@@ -11,11 +11,11 @@ import { useEffect, useMemo, useState } from "react";
 import { RadioCardGroup } from "../../components/ui/RadioCardGroup";
 import { Field } from "../../components/ui/Field";
 import { Input, TextArea } from "../../components/ui/Input";
-import { Select } from "../../components/ui/Select";
 import { Sheet } from "../../components/ui/Sheet";
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { STATE_CODES, validateGstin } from "@billing/gst";
+import { StatePicker } from "../../components/ui/StatePicker";
+import { getStateEntry, validateGstin } from "@billing/gst";
 import {
   ARCHIVE_BUTTON,
   ARCHIVE_CONFIRM_BODY,
@@ -37,18 +37,19 @@ import {
   NUMBERING_LABEL,
   NUMBERING_TEMPLATE_TITLES,
   REGISTRATION_LABEL,
-   REGULAR_CONSEQUENCE,
-   REGULAR_TITLE,
-   SECTION_ADDRESS,
-   SECTION_CONTACT,
-   SECTION_GSTIN,
-   SECTION_IDENTITY,
-   SECTION_LOGO,
-   SECTION_TAX,
-   SHEET_CREATE_TITLE,
-   SHEET_DETAIL_SUBTITLE,
-   SHEET_EDIT_TITLE,
- } from "../../lib/strings/businesses";
+  REGULAR_CONSEQUENCE,
+  REGULAR_TITLE,
+  SECTION_ADDRESS,
+  SECTION_CONTACT,
+  SECTION_GSTIN,
+  SECTION_IDENTITY,
+  SECTION_LOGO,
+  SECTION_TAX,
+  SHEET_CREATE_TITLE,
+  SHEET_DETAIL_SUBTITLE,
+  SHEET_EDIT_TITLE,
+  STATE_PICK_PLACEHOLDER,
+} from "../../lib/strings/businesses";
 import {
   currentFinancialYearLabel,
   gstinLiveCaption,
@@ -146,11 +147,6 @@ export function BusinessSheet({
 
   const fy = currentFinancialYearLabel();
 
-  const stateOptions = STATE_CODES.map((entry) => ({
-    value: entry.code,
-    label: `${entry.name} (${entry.code})${entry.isUt ? " (UT)" : ""}`,
-  }));
-
   const numberingOptions = (
     ["prefix_fy_seq", "prefix_seq", "seq"] as const
   ).map((t) => ({
@@ -240,12 +236,13 @@ export function BusinessSheet({
               <Input value={values.pincode} onChange={(e) => set("pincode", e.target.value)} inputMode="numeric" maxLength={6} readOnly={readOnly} />
             </Field>
             <Field id="biz-state" label={FIELD_STATE} error={err("state_code")}>
-              <Select
-                value={values.state_code}
-                onValueChange={(v) => set("state_code", v)}
-                options={[{ value: "", label: "Select state…" }, ...stateOptions]}
+              {/* IN-02: UI-SPEC Component Contracts - the state field is the
+                  type-to-filter StatePicker combobox, not a raw Select. */}
+              <StatePicker
+                value={getStateEntry(values.state_code) ?? null}
+                onPick={(entry) => set("state_code", entry.code)}
                 disabled={readOnly}
-                aria-label="State"
+                placeholder={STATE_PICK_PLACEHOLDER}
               />
             </Field>
           </div>

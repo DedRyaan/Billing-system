@@ -10,13 +10,20 @@ export interface StatePickerProps {
   value: (typeof STATE_CODES)[number] | null;
   onPick: (entry: (typeof STATE_CODES)[number]) => void;
   id?: string;
+  /** Blocks opening/picking - CONTROL_CLASSES styles it like a disabled Input. */
+  disabled?: boolean;
+  /** Shown while no selection (ink-muted per the Input placeholder contract). */
+  placeholder?: string;
+  /** Field injects error wiring; forwarded so invalid/describedby reach the input. */
+  "aria-invalid"?: boolean | undefined;
+  "aria-describedby"?: string | undefined;
 }
 
 function label(entry: (typeof STATE_CODES)[number]): string {
   return `${entry.name} (${entry.code})${entry.isUt ? " (UT)" : ""}`;
 }
 
-export function StatePicker({ value, onPick, id }: StatePickerProps) {
+export function StatePicker({ value, onPick, id, disabled = false, placeholder, ...rest }: StatePickerProps) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [highlighted, setHighlighted] = useState(0);
@@ -39,6 +46,7 @@ export function StatePicker({ value, onPick, id }: StatePickerProps) {
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (disabled) return;
     if (!open && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
       setOpen(true);
       return;
@@ -65,8 +73,13 @@ export function StatePicker({ value, onPick, id }: StatePickerProps) {
         aria-expanded={open}
         aria-controls={`${id ?? "state"}-listbox`}
         autoComplete="off"
+        disabled={disabled}
+        placeholder={placeholder}
         value={value !== null && query.length === 0 ? label(value) : query}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          if (disabled) return;
+          setOpen(true);
+        }}
         onChange={(e) => {
           setQuery(e.target.value);
           setOpen(true);
@@ -75,6 +88,7 @@ export function StatePicker({ value, onPick, id }: StatePickerProps) {
         onKeyDown={onKeyDown}
         onBlur={() => setTimeout(() => setOpen(false), 120)}
         className={`h-(--control-md) ${CONTROL_CLASSES}`}
+        {...rest}
       />
       {open && filtered.length > 0 && (
         <ul

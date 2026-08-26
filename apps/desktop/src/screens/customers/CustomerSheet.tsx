@@ -8,13 +8,12 @@
 // verified without refetching.
 import { useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
-import { validateGstin } from "@billing/gst";
+import { getStateEntry, validateGstin } from "@billing/gst";
 import { embedGstinLookup } from "@billing/api/customers";
 import { Field } from "../../components/ui/Field";
 import { Input, TextArea } from "../../components/ui/Input";
-import { Select } from "../../components/ui/Select";
 import { Sheet } from "../../components/ui/Sheet";
-import { STATE_CODES } from "@billing/gst";
+import { StatePicker } from "../../components/ui/StatePicker";
 import {
   FETCH_CHECKING_CAPTION,
   FETCH_FALLBACK_HINT,
@@ -28,6 +27,7 @@ import {
   FIELD_STATE,
   SHEET_CREATE_TITLE,
   SHEET_EDIT_TITLE,
+  STATE_PICK_PLACEHOLDER,
   gstinFailCaption,
   nameRequiredCaption,
 } from "../../lib/strings/customers";
@@ -234,11 +234,6 @@ export function CustomerSheet({
     }
   };
 
-  const stateOptions = STATE_CODES.map((entry) => ({
-    value: entry.code,
-    label: `${entry.name} (${entry.code})${entry.isUt ? " (UT)" : ""}`,
-  }));
-
   return (
     <Sheet
       open={open}
@@ -298,14 +293,16 @@ export function CustomerSheet({
 
         <div className="grid grid-cols-2 gap-sd">
           <Field id="cust-state" label={FIELD_STATE}>
-            <Select
-              value={values.state_code}
-              onValueChange={(v) => {
+            {/* IN-02: UI-SPEC Component Contracts - the state field is the
+                type-to-filter StatePicker combobox, not a raw Select. Picking
+                marks the field touched for the prefill dirty-field guard. */}
+            <StatePicker
+              value={getStateEntry(values.state_code) ?? null}
+              onPick={(entry) => {
                 touchedRef.current.add("state_code");
-                setValues((s) => ({ ...s, state_code: v }));
+                setValues((s) => ({ ...s, state_code: entry.code }));
               }}
-              options={[{ value: "", label: "Select state…" }, ...stateOptions]}
-              aria-label="State*"
+              placeholder={STATE_PICK_PLACEHOLDER}
             />
           </Field>
           <Field id="cust-pincode" label="PIN code">

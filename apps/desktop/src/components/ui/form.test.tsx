@@ -138,6 +138,15 @@ describe("StatePicker", () => {
       screen.getByRole("option", { name: /Other Territory \(97\) \(UT\)/ }),
     ).toBeInTheDocument();
   });
+
+  it("disabled keeps the combobox closed and uninteractive", async () => {
+    render(<StatePicker value={null} onPick={() => undefined} disabled />);
+    const combo = screen.getByRole("combobox") as HTMLInputElement;
+    expect(combo.disabled).toBe(true);
+    // Focus must NOT open the listbox (detail-mode readOnly parity).
+    combo.focus();
+    expect(screen.queryByRole("listbox")).toBeNull();
+  });
 });
 
 describe("RadioCardGroup", () => {

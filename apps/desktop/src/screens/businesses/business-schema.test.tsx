@@ -152,7 +152,8 @@ describe("BusinessSheet sections", () => {
     await user.type(screen.getByLabelText("Address lines"), "12 MG Road");
     await user.type(screen.getByLabelText("City"), "Pune");
     await user.type(screen.getByLabelText("PIN code"), "411001");
-    await user.selectOptions(document.getElementById("biz-state") as HTMLSelectElement, "27");
+    await user.type(document.getElementById("biz-state") as HTMLInputElement, "Maharashtra");
+    await user.keyboard("{Enter}");
     await user.type(screen.getByLabelText("Phone"), "98765 43210");
     await user.type(screen.getByLabelText(/Prefix/), "INV");
 
@@ -163,6 +164,8 @@ describe("BusinessSheet sections", () => {
     const arg = calls[0]![0]!;
     expect(arg.gstin).toBe("27AAPFU0939F1ZV");
     expect(arg.phone).toBe("9876543210");
+    // IN-02 wiring: BusinessSheet's StatePicker combobox submits the state CODE.
+    expect(arg.state).toBe("27");
   });
 
   it("invalid submit shows the specific GSTIN caption under the field", async () => {

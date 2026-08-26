@@ -98,14 +98,23 @@ export function Sheet({ open, onClose, title, subtitle, dirty, onSave, children,
                   className="fixed inset-y-0 right-0 flex w-(--width-sheet) max-w-full flex-col overflow-hidden rounded-l-xl bg-surface"
                   style={{ boxShadow: "var(--shadow-sheet)", zIndex: 50 }}
                   onKeyDown={(e) => {
-                    // Enter submits the contained form.
+                    // Enter submits the contained form - EXCEPT when the
+                    // target is a combobox (IN-02 StatePicker): the picker
+                    // consumes Enter to commit its highlighted entry, so
+                    // hijacking it would requestSubmit() with pre-pick
+                    // values and resurrect just-cleared validation errors.
                     if (
                       e.key === "Enter" &&
                       !(e.target instanceof HTMLTextAreaElement) &&
                       e.currentTarget.contains(e.target as Node)
                     ) {
                       const form = e.currentTarget.querySelector("form");
-                      if (form !== null && (e.target as HTMLElement).tagName !== "BUTTON") {
+                      const target = e.target as HTMLElement;
+                      if (
+                        form !== null &&
+                        target.tagName !== "BUTTON" &&
+                        target.getAttribute("role") !== "combobox"
+                      ) {
                         e.preventDefault();
                         form.requestSubmit();
                       }

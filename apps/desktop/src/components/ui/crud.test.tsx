@@ -186,5 +186,40 @@ describe("Sheet", () => {
     render(<Harness />);
     await waitFor(() => expect(screen.getByLabelText("First field")).toHaveFocus());
   });
+
+  // IN-02 regression: Enter inside a combobox commits the picker's own
+  // highlighted entry; the sheet must NOT hijack it into form.requestSubmit()
+  // (that fired a premature submit with stale values, stamping errors that
+  // disabled Save in BusinessSheet's state combobox flow).
+  it("Enter from a role=combobox target does not submit the contained form", async () => {
+    const onSave = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <Sheet open onClose={() => undefined} title="Combobox guard" dirty={false} onSave={onSave}>
+        <>
+          {/* Stub mirrors the StatePicker contract: the picker consumes Enter
+              (preventDefault) to commit its highlighted entry. */}
+          <input
+            role="combobox"
+            aria-label="State"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") e.preventDefault();
+            }}
+          />
+          <input aria-label="First field" />
+        </>
+      </Sheet>,
+    );
+    // Combobox target: Enter is consumed by the picker - no submit from the
+    // sheet's Enter-hijack AND none native (preventDefault suppressed it).
+    screen.getByLabelText("State").focus();
+    await user.keyboard("{Enter}");
+    expect(onSave).not.toHaveBeenCalled();
+
+    // Plain text inputs keep the Enter-submits contract.
+    screen.getByLabelText("First field").focus();
+    await user.keyboard("{Enter}");
+    expect(onSave).toHaveBeenCalledTimes(1);
+  });
 });
 

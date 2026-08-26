@@ -37,7 +37,8 @@ describe("validation truth", () => {
     mount({ onSubmit });
 
     await user.type(screen.getByLabelText("Legal name*"), "Ravi Kumar");
-    await user.selectOptions(document.getElementById("cust-state") as HTMLSelectElement, "27");
+    await user.type(document.getElementById("cust-state") as HTMLInputElement, "Maharashtra");
+    await user.keyboard("{Enter}");
     const save = screen.getByRole("button", { name: "Save" });
     await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
     await user.click(save);
@@ -45,13 +46,33 @@ describe("validation truth", () => {
     const arg = (onSubmit.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]![0]!;
     expect(arg["name"]).toBe("Ravi Kumar");
     expect(arg["gstin"]).toBeNull(); // empty stays null, never ""
+    // IN-02 wiring: the combobox pick lands as the state CODE on submit.
+    expect(arg["stateCode"]).toBe("27");
+  });
+
+  it("state combobox filters by code and submits the picked entry's code (IN-02 wiring)", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(async () => true);
+    mount({ onSubmit });
+    await user.type(screen.getByLabelText("Legal name*"), "Code Search");
+    // Digit query narrows by CODE ("29" = Karnataka), not by name.
+    await user.type(document.getElementById("cust-state") as HTMLInputElement, "29");
+    expect(screen.getByRole("option", { name: /Karnataka \(29\)/ })).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    const save = screen.getByRole("button", { name: "Save" });
+    await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
+    await user.click(save);
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
+    const arg = (onSubmit.mock.calls as unknown as Array<[Record<string, unknown>]>)[0]![0]!;
+    expect(arg["stateCode"]).toBe("29");
   });
 
   it("a structurally-invalid GSTIN blocks with the specific caption ending in the generic line", async () => {
     const user = userEvent.setup();
     mount({});
     await user.type(screen.getByLabelText("Legal name*"), "Ravi");
-    await user.selectOptions(document.getElementById("cust-state") as HTMLSelectElement, "27");
+    await user.type(document.getElementById("cust-state") as HTMLInputElement, "Maharashtra");
+    await user.keyboard("{Enter}");
     await user.type(document.getElementById("cust-gstin") as HTMLInputElement, "27AAPFU0939F1ZU"); // checksum
     await waitFor(() => {
       expect(document.getElementById("cust-gstin-desc")?.textContent ?? "").toContain(
@@ -104,7 +125,8 @@ describe("auto-fetch integration", () => {
       initial: { name: "", state_code: "" },
     });
     await user.type(screen.getByLabelText("Legal name*"), "Someone");
-    await user.selectOptions(document.getElementById("cust-state") as HTMLSelectElement, "27");
+    await user.type(document.getElementById("cust-state") as HTMLInputElement, "Maharashtra");
+    await user.keyboard("{Enter}");
     await user.type(document.getElementById("cust-gstin") as HTMLInputElement, "33AAACC1206D1ZN");
 
     await waitFor(
@@ -130,7 +152,8 @@ describe("save composition", () => {
       }),
     });
     await user.type(screen.getByLabelText("Legal name*"), "Typed Name");
-    await user.selectOptions(document.getElementById("cust-state") as HTMLSelectElement, "27");
+    await user.type(document.getElementById("cust-state") as HTMLInputElement, "Maharashtra");
+    await user.keyboard("{Enter}");
     await user.type(document.getElementById("cust-gstin") as HTMLInputElement, "27AAPFU0939F1ZV");
     await waitFor(
       () =>
@@ -153,7 +176,8 @@ describe("save composition", () => {
     const onSubmit = vi.fn(async () => true);
     mount({ onSubmit });
     await user.type(screen.getByLabelText("Legal name*"), "Plain Person");
-    await user.selectOptions(document.getElementById("cust-state") as HTMLSelectElement, "29");
+    await user.type(document.getElementById("cust-state") as HTMLInputElement, "Karnataka");
+    await user.keyboard("{Enter}");
     const save = screen.getByRole("button", { name: "Save" });
     await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
     await user.click(save);

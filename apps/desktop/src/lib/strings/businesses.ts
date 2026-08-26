@@ -114,3 +114,4 @@ export const logoGateCaption = (reason: string): string =>
     ? "Logo must be 1 MB or smaller."
     : "Logo must be a PNG, JPG or SVG image.";
 export { RETRY };
+export { STATE_PICK_PLACEHOLDER } from "./global";

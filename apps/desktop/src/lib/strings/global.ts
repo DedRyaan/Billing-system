@@ -17,6 +17,9 @@ export const SAVING = "Saving…";
 
 export const CANCEL = "Cancel";
 
+/** StatePicker combobox placeholder (S4 Business / S5 Customer sheets share it). */
+export const STATE_PICK_PLACEHOLDER = "Select state…";
+
 /**
  * Routine-save feedback is SILENCE - no success toast for routine saves; the
  * row updates live (optimistic). Toasts are reserved for failures and

@@ -52,3 +52,4 @@ export const COL_GSTIN = "GSTIN";
 export const COL_UPDATED = "Updated";
 
 export { RETRY };
+export { STATE_PICK_PLACEHOLDER } from "./global";

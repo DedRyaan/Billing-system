@@ -117,7 +117,8 @@ describe("CustomersScreen", () => {
     await user.click(screen.getByText("Add customer"));
     await waitFor(() => expect(document.getElementById("cust-legal-name")).not.toBeNull());
     await user.type(document.getElementById("cust-legal-name") as HTMLInputElement, "New Person");
-    await user.selectOptions(document.getElementById("cust-state") as HTMLSelectElement, "27");
+    await user.type(document.getElementById("cust-state") as HTMLInputElement, "Maharashtra");
+    await user.keyboard("{Enter}");
     const save = screen.getByRole("button", { name: "Save" });
     await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
     await user.click(save);
