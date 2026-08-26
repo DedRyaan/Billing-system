@@ -250,3 +250,66 @@ describe("bootstrap precedence", () => {
     });
   });
 });
+
+describe("cross-identity profile hygiene (WR-03)", () => {
+  it("adopting a different identity never renders the previous user's role", async () => {
+    // First profiles read -> user A (admin). Every later read -> user B (staff).
+    let reads = 0;
+    const { client } = fakeAuthClient({ restoredSession: SESSION });
+    const scripted = Object.assign(client, {
+      auth: Object.assign({}, client.auth, {
+        getUser: async () => ({ data: { user: { id: "user-1" } }, error: null }),
+      }),
+      from: () => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => ({
+              data: {
+                id: "user-1",
+                role: reads++ === 0 ? "admin" : "staff",
+                is_active: true,
+                locked_at: null,
+              },
+              error: null,
+            }),
+          }),
+        }),
+      }),
+    }) as unknown as SupabaseClient;
+
+    // Record EVERY role value the provider ever renders so the test can
+    // inspect the exact sequence around the identity switch.
+    const seenRoles: string[] = [];
+    function IdentityProbe(): React.ReactElement {
+      const { role, adoptReturnedSession } = useAuth();
+      seenRoles.push(role ?? "none");
+      return (
+        <button
+          type="button"
+          onClick={() => void adoptReturnedSession({ access_token: "at-B", refresh_token: "rt-B" })}
+        >
+          probe-adopt
+        </button>
+      );
+    }
+
+    await renderApp({
+      initialEntry: "/dashboard",
+      authClient: scripted,
+      extra: <IdentityProbe />,
+    });
+
+    // User A's server-controlled role is live.
+    await waitFor(() => expect(seenRoles).toContain("admin"));
+
+    const mark = seenRoles.length;
+    await act(async () => {
+      screen.getByRole("button", { name: "probe-adopt" }).click();
+    });
+    // User B's own truth replaces it.
+    await waitFor(() => expect(seenRoles.slice(mark)).toContain("staff"));
+    // THE CONTRACT: after the switch begins, NO render may show A's role -
+    // not even transiently before B's refetch lands.
+    expect(seenRoles.slice(mark)).not.toContain("admin");
+  });
+});

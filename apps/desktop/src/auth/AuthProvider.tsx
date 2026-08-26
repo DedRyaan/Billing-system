@@ -251,6 +251,9 @@ export function AuthProvider({
           p.status === "restoring" ? p : { ...p, status: "unauthenticated" },
         );
         setSession(null);
+        // WR-03: the failure path ends THIS identity - its cached profile
+        // (sidebar name, role predicate) must not survive into the next one.
+        setProfile(null);
         setSessionState("unauthenticated");
         navigateToLogin(reason);
       },
@@ -290,6 +293,10 @@ export function AuthProvider({
       if (current.status === "restoring" || !current.client) {
         return { ok: false, reason: "unknown" };
       }
+      // WR-03: the returned session may be a DIFFERENT identity (bootstrap
+      // mint, post-logout sign-in). Drop the previous user's profile first so
+      // role-gated chrome never renders the wrong identity's value.
+      setProfile(null);
       const res = await adoptSession(current.client, sessionJson);
       if (!res.ok) return { ok: false, reason: res.reason };
       setPhase({ status: "authenticated", client: current.client });
