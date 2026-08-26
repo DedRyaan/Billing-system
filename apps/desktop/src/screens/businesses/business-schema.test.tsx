@@ -5,12 +5,12 @@
 import { describe, expect, it, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { Sheet } from "../../components/ui/Sheet";
 import { BusinessSheet } from "./BusinessSheet";
 import {
   previewNumbering,
   validateBusinessForm,
   type BusinessFormValues,
+  type NormalizedBusinessForm,
 } from "./business-schema";
 import { GSTIN_GENERIC_LINE } from "../../lib/strings/businesses";
 
@@ -120,10 +120,11 @@ describe("previewNumbering", () => {
 });
 
 describe("BusinessSheet sections", () => {
-  function mountSheet(onSubmit: ReturnType<typeof vi.fn>, mode: "create" | "detail" = "create") {
-    render(
-      <BusinessSheet open onClose={vi.fn()} mode={mode} onSubmit={onSubmit} />,
-    );
+  function mountSheet(
+    onSubmit: (values: NormalizedBusinessForm) => Promise<boolean> | boolean,
+    mode: "create" | "detail" = "create",
+  ) {
+    render(<BusinessSheet open onClose={vi.fn()} mode={mode} onSubmit={onSubmit} />);
   }
 
   it("renders all six section labels in order with identity/GSTIN/address/contact fields", async () => {
@@ -158,7 +159,8 @@ describe("BusinessSheet sections", () => {
     await waitFor(() => expect(save.hasAttribute("disabled")).toBe(false));
     await user.click(save);
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
-    const arg = onSubmit.mock.calls[0]![0] as { gstin: string; phone: string | null };
+    const calls = onSubmit.mock.calls as unknown as Array<[NormalizedBusinessForm]>;
+    const arg = calls[0]![0]!;
     expect(arg.gstin).toBe("27AAPFU0939F1ZV");
     expect(arg.phone).toBe("9876543210");
   });

@@ -12,8 +12,8 @@ export interface FieldControlProps {
 export interface FieldProps {
   id: string;
   label: string;
-  helper?: string;
-  error?: string;
+  helper?: string | undefined;
+  error?: string | undefined;
   children: ReactElement<FieldControlProps>;
 }
 

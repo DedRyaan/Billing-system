@@ -28,7 +28,7 @@ export interface BusinessFormValues {
 }
 
 export type BusinessFormField = keyof BusinessFormValues;
-export type BusinessFormErrors = Partial<Record<BusinessFormField, string>>;
+export type BusinessFormErrors = Partial<Record<BusinessFormField, string | undefined>>;
 
 export interface NormalizedBusinessForm {
   legal_name: string;
