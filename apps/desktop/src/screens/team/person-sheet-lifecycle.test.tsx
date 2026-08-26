@@ -19,12 +19,13 @@ const person: ProfileSummary = {
 };
 
 function base(): ScriptedClientOptions {
+  void 0;
   return {
     session: { access_token: "at", refresh_token: "rt" },
     tables: {
       businesses: [],
       business_members: [],
-      profiles: [person],
+      profiles: [person as unknown as Record<string, unknown>],
     },
   };
 }
