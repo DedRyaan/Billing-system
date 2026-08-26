@@ -11,8 +11,10 @@ import { enIN } from "date-fns/locale";
 import { Users } from "lucide-react";
 import type { CustomerRow } from "@billing/api/customers";
 import { createCustomer, listCustomersByBusiness, updateCustomer } from "@billing/api/customers";
+import { fetchGstinParty, type NormalizedParty } from "@billing/api/gstin-lookup";
 import { keysFor } from "@billing/api/query-keys";
 import { getStateEntry } from "@billing/gst";
+import { readGstinLookupEnv } from "../../lib/env";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { Button } from "../../components/ui/Button";
@@ -36,6 +38,7 @@ import {
   SEARCH_PLACEHOLDER,
 } from "../../lib/strings/customers";
 import { CustomerSheet, type NormalizedCustomerForm } from "./CustomerSheet";
+import type { AutoFetchOutcome, NormalizedPayload } from "./useGstinAutoFetch";
 
 interface RowVM {
   id: string;
@@ -63,6 +66,46 @@ export function CustomersScreen() {
 
   const businessId = biz.activeBusinessId;
   const listingKey = keysFor.customers(businessId ?? "global");
+
+  // CR-02 (MSTR-03 end-to-end): compose the production lookup ONCE per mount
+  // over the optional env wiring. Stable identity - the machine's effect
+  // depends on deps.lookup. Absent config keeps the feature disabled exactly
+  // like the tests' disabled-deps path; silent degradation stays the contract.
+  const lookup = useMemo(() => {
+    const config = readGstinLookupEnv(import.meta.env as unknown as Record<string, unknown>);
+    if (config === null) return undefined;
+    const toMachinePayload = (p: NormalizedParty): NormalizedPayload => ({
+      legalName: p.legalName,
+      ...(p.tradeName !== undefined ? { tradeName: p.tradeName } : {}),
+      ...(p.registeredAddress !== undefined
+        ? {
+            registeredAddress: {
+              lines: p.registeredAddress.lines,
+              ...(p.registeredAddress.city !== undefined ? { city: p.registeredAddress.city } : {}),
+              ...(p.registeredAddress.stateCode !== undefined
+                ? { stateCode: p.registeredAddress.stateCode }
+                : {}),
+              ...(p.registeredAddress.pincode !== undefined
+                ? { pincode: p.registeredAddress.pincode }
+                : {}),
+            },
+          }
+        : {}),
+    });
+    return async (gstin: string): Promise<AutoFetchOutcome> => {
+      const outcome = await fetchGstinParty({ config }, { gstin });
+      switch (outcome.outcome) {
+        case "verified":
+          return { outcome: "verified", payload: toMachinePayload(outcome.payload) };
+        case "not_found":
+          return { outcome: "not_found" };
+        // disabled/invalid_structure cannot occur here (config present; the
+        // machine pre-validates structure) - degrade like any other failure.
+        default:
+          return { outcome: "failed" };
+      }
+    };
+  }, []);
 
   const listing = useQuery({
     queryKey: listingKey,
@@ -195,6 +238,7 @@ export function CustomersScreen() {
           onClose={() => setSheet(null)}
           mode={"row" in sheet ? "edit" : "create"}
           businessId={businessId}
+          {...(lookup !== undefined ? { lookup } : {})}
           {...("row" in sheet
             ? {
                 initial: {

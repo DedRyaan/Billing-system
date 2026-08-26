@@ -37,3 +37,27 @@ export function readBillingEnv(record: Record<string, unknown>): BillingEnv {
   }
   return { url, anonKey };
 }
+
+/** Lookup client config composed by the customers screen (MSTR-03/D-76). */
+export interface GstinLookupEnvConfig {
+  baseUrl: string;
+  apiKeyHeader?: { name: string; value: string };
+}
+
+/**
+ * Optional GSTIN auto-fetch wiring (CR-02): VITE_GSTIN_LOOKUP_URL present
+ * turns the feature on; anything else returns null and the caller keeps the
+ * machine disabled. NEVER throws - this feature must not be able to break
+ * app boot the way a missing Supabase env must. The key rides as x-api-key.
+ */
+export function readGstinLookupEnv(record: Record<string, unknown>): GstinLookupEnvConfig | null {
+  const url = record["VITE_GSTIN_LOOKUP_URL"];
+  if (typeof url !== "string" || url.trim().length === 0) return null;
+  const key = record["VITE_GSTIN_LOOKUP_API_KEY"];
+  return {
+    baseUrl: url,
+    ...(typeof key === "string" && key.length > 0
+      ? { apiKeyHeader: { name: "x-api-key", value: key } }
+      : {}),
+  };
+}
