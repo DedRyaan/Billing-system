@@ -6,8 +6,6 @@ import userEvent from "@testing-library/user-event";
 import { BusinessSheet } from "./BusinessSheet";
 import type { NormalizedBusinessForm } from "./business-schema";
 
-const noopSubmit = () => async () => true;
-
 function mount(
   opts: Partial<Parameters<typeof BusinessSheet>[0]> & { onSubmit?: (v: NormalizedBusinessForm) => Promise<boolean> | boolean } = {},
 ) {
