@@ -167,7 +167,6 @@ export function DataTable<T>({
                 role="row"
                 data-row-id={id}
                 onClick={() => onRowActivate?.(row)}
-                onFocus={() => undefined}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -193,7 +192,7 @@ export function DataTable<T>({
                           truncated ? "inline-block max-w-[32ch] overflow-hidden text-ellipsis whitespace-nowrap align-middle" : ""
                         }`}
                       >
-                        {idx === 0 && truncated ? raw : raw}
+                        {raw}
                       </span>
                     </td>
                   );

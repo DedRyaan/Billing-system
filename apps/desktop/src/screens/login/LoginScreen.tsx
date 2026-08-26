@@ -93,7 +93,7 @@ export function LoginScreen({ initialReason, redirectTo, onAuthenticated }: Logi
         const adopted = await adoptReturnedSession(result.session);
         if (adopted.ok) {
           onAuthenticated(redirectTo ?? "/dashboard");
-          return; // navigation hands off; keep submit lock
+          return; // navigation hands off; the lock resets in finally for the next attempt
         }
         setBanner({ tone: "danger", copy: GENERIC_CREDENTIALS_MESSAGE });
       } else if (result.reason === "network") {
