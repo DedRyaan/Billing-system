@@ -191,7 +191,6 @@ export function ItemSheet({
           <Field
             id="item-code"
             label={`${codeLabelFor(values.kind)}${readOnly ? "" : " (optional)"}`}
-            helper={liveWarning ?? undefined}
             error={errors["hsn_sac"]}
           >
             <Input
