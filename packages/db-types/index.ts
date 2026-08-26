@@ -299,6 +299,7 @@ export type Database = {
       }
       invoice_lines: {
         Row: {
+          catalog_item_id: string | null
           cgst_amount: number
           description: string
           discount_pct: number
@@ -315,6 +316,7 @@ export type Database = {
           unit_price_charged: number
         }
         Insert: {
+          catalog_item_id?: string | null
           cgst_amount?: number
           description: string
           discount_pct?: number
@@ -331,6 +333,7 @@ export type Database = {
           unit_price_charged: number
         }
         Update: {
+          catalog_item_id?: string | null
           cgst_amount?: number
           description?: string
           discount_pct?: number
@@ -347,6 +350,13 @@ export type Database = {
           unit_price_charged?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "invoice_lines_catalog_item_id_fkey"
+            columns: ["catalog_item_id"]
+            isOneToOne: false
+            referencedRelation: "catalog_items"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "invoice_lines_invoice_id_fkey"
             columns: ["invoice_id"]
@@ -365,6 +375,7 @@ export type Database = {
           credit_note_of: string | null
           customer_address: Json | null
           customer_gstin: string | null
+          customer_id: string | null
           customer_name: string | null
           fy: string
           id: string
@@ -394,6 +405,7 @@ export type Database = {
           credit_note_of?: string | null
           customer_address?: Json | null
           customer_gstin?: string | null
+          customer_id?: string | null
           customer_name?: string | null
           fy: string
           id?: string
@@ -423,6 +435,7 @@ export type Database = {
           credit_note_of?: string | null
           customer_address?: Json | null
           customer_gstin?: string | null
+          customer_id?: string | null
           customer_name?: string | null
           fy?: string
           id?: string
@@ -457,6 +470,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "invoices_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
             referencedColumns: ["id"]
           },
           {
