@@ -112,7 +112,11 @@ export function CustomersScreen() {
   const listing = useQuery({
     queryKey: listingKey,
     queryFn: async () => {
-      const res = await listCustomersByBusiness(auth.client!, businessId!);
+      // IN-08: explicit narrowing instead of non-null assertions.
+      if (auth.client === null || businessId === null) {
+        throw new Error("invariant: listing ran without client or business");
+      }
+      const res = await listCustomersByBusiness(auth.client, businessId);
       if (!res.ok) throw new Error(res.error.message);
       return res.data;
     },
@@ -139,9 +143,13 @@ export function CustomersScreen() {
 
   const saveMutation = useMutation({
     mutationFn: async ({ values, editingId }: { values: NormalizedCustomerForm; editingId?: string }) => {
+      // IN-08: explicit narrowing instead of non-null assertions.
+      if (auth.client === null || businessId === null) {
+        throw new Error("invariant: save ran without client or business");
+      }
       const res =
         editingId === undefined
-          ? await createCustomer(auth.client!, businessId!, {
+          ? await createCustomer(auth.client, businessId, {
               name: values.name,
               ...(values.gstin !== null ? { gstin: values.gstin } : {}),
               ...(values.phone !== null ? { phone: values.phone } : {}),
@@ -149,9 +157,9 @@ export function CustomersScreen() {
               stateCode: values.stateCode,
               ...(values.notes !== null ? { notes: values.notes } : {}),
             })
-          : await updateCustomer(auth.client!, {
+          : await updateCustomer(auth.client, {
               id: editingId,
-              businessId: businessId!,
+              businessId,
               patch: {
                 name: values.name,
                 gstin: values.gstin,

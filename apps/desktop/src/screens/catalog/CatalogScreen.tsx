@@ -116,7 +116,11 @@ export function CatalogScreen() {
   const listing = useQuery({
     queryKey: listingKey,
     queryFn: async () => {
-      const res = await listCatalogItems(auth.client!, businessId!);
+      // IN-08: explicit narrowing instead of non-null assertions.
+      if (auth.client === null || businessId === null) {
+        throw new Error("invariant: listing ran without client or business");
+      }
+      const res = await listCatalogItems(auth.client, businessId);
       if (!res.ok) throw new Error(res.error.message);
       return res.data;
     },
@@ -145,9 +149,13 @@ export function CatalogScreen() {
 
   const saveMutation = useMutation({
     mutationFn: async ({ values, editingId }: { values: NormalizedCatalogItem; editingId?: string }) => {
+      // IN-08: explicit narrowing instead of non-null assertions.
+      if (auth.client === null || businessId === null) {
+        throw new Error("invariant: save ran without client or business");
+      }
       const res =
         editingId === undefined
-          ? await createCatalogItem(auth.client!, businessId!, {
+          ? await createCatalogItem(auth.client, businessId, {
               name: values.name,
               kind: values.kind,
               ...(values.hsnSac !== null ? { hsnSac: values.hsnSac } : {}),
@@ -157,9 +165,9 @@ export function CatalogScreen() {
               mrpPaise: values.mrpPaise,
               stockQty: values.stockQty,
             })
-          : await updateCatalogItem(auth.client!, {
+          : await updateCatalogItem(auth.client, {
               id: editingId,
-              businessId: businessId!,
+              businessId,
               patch: {
                 name: values.name,
                 ...(values.hsnSac !== null ? { hsnSac: values.hsnSac } : {}),
@@ -254,13 +262,17 @@ export function CatalogScreen() {
 
   const lifecycle = useMutation({
     mutationFn: async ({ id, reactivate }: { id: string; reactivate: boolean }) => {
+      // IN-08: explicit narrowing instead of non-null assertions.
+      if (auth.client === null || businessId === null) {
+        throw new Error("invariant: lifecycle ran without client or business");
+      }
       const res = reactivate
-        ? await updateCatalogItem(auth.client!, {
+        ? await updateCatalogItem(auth.client, {
             id,
-            businessId: businessId!,
+            businessId,
             patch: { isActive: true },
           })
-        : await deactivateItem(auth.client!, { id, businessId: businessId! });
+        : await deactivateItem(auth.client, { id, businessId });
       if (!res.ok) throw new Error(res.error.message);
       return res.data;
     },

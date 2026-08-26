@@ -80,7 +80,9 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
   const listing = useQuery({
     queryKey: listingKey,
     queryFn: async () => {
-      const res = await listBusinesses(auth.client!);
+      // IN-08: explicit narrowing instead of non-null assertions.
+      if (auth.client === null) throw new Error("invariant: listing ran without client");
+      const res = await listBusinesses(auth.client);
       if (!res.ok) throw new Error(res.error.message);
       return res.data;
     },
@@ -121,9 +123,11 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
       values: NormalizedBusinessForm;
       editingId?: string;
     }) => {
+      // IN-08: explicit narrowing instead of non-null assertions.
+      if (auth.client === null) throw new Error("invariant: save ran without client");
       const res =
         editingId === undefined
-          ? await createBusiness(auth.client!, {
+          ? await createBusiness(auth.client, {
               gstin: values.gstin,
               legal_name: values.legal_name,
               trade_name: values.trade_name,
@@ -135,7 +139,7 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
               number_format: values.number_format,
               prefix: values.prefix,
             } satisfies CreateBusinessInput)
-          : await updateBusiness(auth.client!, editingId, {
+          : await updateBusiness(auth.client, editingId, {
               legal_name: values.legal_name,
               trade_name: values.trade_name,
               address: values.address,
@@ -232,10 +236,12 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
 
   const lifecycleMutation = useMutation({
     mutationFn: async ({ id, verb }: { id: string; verb: "archive" | "restore" }) => {
+      // IN-08: explicit narrowing instead of non-null assertions.
+      if (auth.client === null) throw new Error("invariant: lifecycle ran without client");
       const res =
         verb === "archive"
-          ? await archiveBusiness(auth.client!, id)
-          : await restoreBusiness(auth.client!, id);
+          ? await archiveBusiness(auth.client, id)
+          : await restoreBusiness(auth.client, id);
       if (!res.ok) throw new Error(res.error.message);
       return res.data;
     },
@@ -389,11 +395,14 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
                       businessId={sheet.row.id}
                       existingPath={sheet.row.logo_path}
                       onUploaded={(path) => {
-                        void updateBusiness(auth.client!, sheet.row.id, { logo_path: path });
+                        // IN-08: narrow instead of asserting.
+                        if (auth.client === null) return;
+                        void updateBusiness(auth.client, sheet.row.id, { logo_path: path });
                         void qc.invalidateQueries({ queryKey: listingKey });
                       }}
                       onRemoved={() => {
-                        void updateBusiness(auth.client!, sheet.row.id, { logo_path: null });
+                        if (auth.client === null) return;
+                        void updateBusiness(auth.client, sheet.row.id, { logo_path: null });
                         void qc.invalidateQueries({ queryKey: listingKey });
                       }}
                     />
