@@ -13,8 +13,14 @@ import { Field } from "../../components/ui/Field";
 import { Input, TextArea } from "../../components/ui/Input";
 import { Select } from "../../components/ui/Select";
 import { Sheet } from "../../components/ui/Sheet";
+import { Button } from "../../components/ui/Button";
+import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { STATE_CODES, validateGstin } from "@billing/gst";
 import {
+  ARCHIVE_BUTTON,
+  ARCHIVE_CONFIRM_BODY,
+  ARCHIVE_CONFIRM_VERB,
+  archiveConfirmTitle,
   COMPOSITION_CONSEQUENCE,
   COMPOSITION_TITLE,
   FIELD_ADDRESS_LINES,
@@ -60,8 +66,8 @@ export interface BusinessSheetProps {
   onClose: () => void;
   /** Receives normalized values; return false to keep the sheet open. */
   onSubmit: (values: NormalizedBusinessForm) => Promise<boolean> | boolean;
-  /** Quiet destructive footer-left slot (archive button, super-admin only). */
-  footerLeft?: React.ReactNode;
+  /** Super-admin archive affordance (edit mode only) behind the exact confirm. */
+  onArchive?: () => void;
   /** Logo section content (LogoUploadField drops in here). */
   logoSlot?: React.ReactNode;
 }
@@ -95,12 +101,13 @@ export function BusinessSheet({
   initial,
   onClose,
   onSubmit,
-  footerLeft,
+  onArchive,
   logoSlot,
 }: BusinessSheetProps) {
   const [values, setValues] = useState<BusinessFormValues>({ ...EMPTY, ...initial });
   const [errors, setErrors] = useState<BusinessFormErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
   const readOnly = mode === "detail";
   const editLocked = mode === "edit"; // GSTIN/tax-config are create-only facts
 
@@ -165,7 +172,19 @@ export function BusinessSheet({
 
   const err = (k: keyof BusinessFormValues) => errors[k];
 
+  const archiveFooter =
+    mode === "edit" && onArchive !== undefined && !readOnly ? (
+      <Button
+        type="button"
+        variant="danger-text"
+        onClick={() => setArchiveOpen(true)}
+      >
+        {ARCHIVE_BUTTON}
+      </Button>
+    ) : undefined;
+
   return (
+    <>
     <Sheet
       open={open}
       onClose={onClose}
@@ -175,7 +194,7 @@ export function BusinessSheet({
       onSave={() => void handleSubmit()}
       saveDisabled={!formValid || submitting}
       {...(readOnly ? { readOnly: true } : {})}
-      {...(footerLeft !== undefined && !readOnly ? { footerLeft } : {})}
+      {...(archiveFooter !== undefined ? { footerLeft: archiveFooter } : {})}
     >
       <div className="flex flex-col gap-xl">
         {/* IDENTITY */}
@@ -287,6 +306,18 @@ export function BusinessSheet({
         </section>
       </div>
     </Sheet>
+
+    {/* Archive confirm (T-3-27): verb-specific confirm, exact consequence copy. */}
+    <ConfirmDialog
+      open={archiveOpen}
+      onOpenChange={setArchiveOpen}
+      title={archiveConfirmTitle(values.legal_name || "business")}
+      body={ARCHIVE_CONFIRM_BODY}
+      confirmLabel={ARCHIVE_CONFIRM_VERB}
+      tone="danger"
+      onConfirm={() => onArchive?.()}
+    />
+    </>
   );
 }
 
