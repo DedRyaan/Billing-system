@@ -36,3 +36,53 @@ describe("keysFor", () => {
     expect(detail.slice(0, base.length)).not.toEqual(keysFor.customers("b-other"));
   });
 });
+
+describe("keysFor.payments", () => {
+  it("produces [\"payments\", businessId] for bare call", () => {
+    expect(keysFor.payments("b-1")).toEqual(["payments", "b-1"]);
+  });
+
+  it("produces [\"payments\", businessId, invoiceId] with rest segment", () => {
+    expect(keysFor.payments("b-1", "inv-1")).toEqual(["payments", "b-1", "inv-1"]);
+  });
+
+  it("freezes tuples so accidental mutation fails loudly", () => {
+    expect(Object.isFrozen(keysFor.payments("b-1"))).toBe(true);
+    expect(Object.isFrozen(keysFor.payments("b-1", "inv-1"))).toBe(true);
+  });
+
+  it("two different businessIds never collide", () => {
+    expect(JSON.stringify(keysFor.payments("b-1"))).not.toEqual(
+      JSON.stringify(keysFor.payments("b-2")),
+    );
+  });
+
+  it("extra segments prefix-match the base key (switch-time invalidation)", () => {
+    const base = keysFor.payments("b-1");
+    const detail = keysFor.payments("b-1", "inv-1");
+    expect(detail.slice(0, base.length)).toEqual(base);
+    expect(detail.slice(0, base.length)).not.toEqual(keysFor.payments("b-other"));
+  });
+});
+
+describe("keysFor.outstandings", () => {
+  it("produces [\"outstandings\", businessId]", () => {
+    expect(keysFor.outstandings("b-1")).toEqual(["outstandings", "b-1"]);
+  });
+
+  it("freezes tuples", () => {
+    expect(Object.isFrozen(keysFor.outstandings("b-1"))).toBe(true);
+  });
+
+  it("two different businessIds never collide", () => {
+    expect(JSON.stringify(keysFor.outstandings("b-1"))).not.toEqual(
+      JSON.stringify(keysFor.outstandings("b-2")),
+    );
+  });
+
+  it("payments and outstandings keys never collide for same businessId", () => {
+    expect(JSON.stringify(keysFor.payments("b-1"))).not.toEqual(
+      JSON.stringify(keysFor.outstandings("b-1")),
+    );
+  });
+});
