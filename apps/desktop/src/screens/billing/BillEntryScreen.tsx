@@ -10,7 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { useSearch } from "@tanstack/react-router";
+import { useRouter, useSearch } from "@tanstack/react-router";
 import {
   listCustomersByBusiness,
   type CustomerRow,
@@ -79,6 +79,25 @@ type ScreenView =
   | { kind: "detail"; invoice: InvoiceRow; lines: InvoiceLineRow[] };
 
 export function BillEntryScreen() {
+  // Deep-link (real route): /bills?invoiceId=xxx opens InvoiceDetail directly.
+  // Tests mount this screen directly without a RouterProvider, where useSearch()
+  // dereferences a null router and throws. Render a router-aware host only when
+  // a router is actually mounted; fall back to a plain body with no deep-link.
+  const router = useRouter({ warn: false });
+  if (!router) return <BillEntryContent />;
+  return <RouterDeepLinkHost />;
+}
+
+function RouterDeepLinkHost() {
+  const { invoiceId } = useSearch({ strict: false }) as { invoiceId?: string };
+  return <BillEntryContent targetInvoiceId={invoiceId} />;
+}
+
+interface BillEntryContentProps {
+  targetInvoiceId?: string | undefined;
+}
+
+function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
   const auth = useAuth();
   const biz = useActiveBusiness();
   const online = useOnlineStatus();
@@ -92,11 +111,6 @@ export function BillEntryScreen() {
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
 
   const businessId = biz.activeBusinessId;
-
-  // Deep-link: /bills?invoiceId=xxx opens InvoiceDetail directly.
-  const { invoiceId: targetInvoiceId } = useSearch({ strict: false }) as {
-    invoiceId?: string;
-  };
 
   // When deep-linked, fetch the target invoice and switch to detail view.
   useEffect(() => {
