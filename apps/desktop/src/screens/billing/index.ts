@@ -4,5 +4,6 @@ export { CustomerPicker } from "./CustomerPicker";
 export { ItemPicker } from "./ItemPicker";
 export { LineItemsTable } from "./LineItemsTable";
 export { GstPreview } from "./GstPreview";
+export { InvoiceListSection } from "./InvoiceListSection";
 export { useDraftTotals } from "./useDraftTotals";
 export type { LineItemDraft, BillFormData } from "./billing-schema";

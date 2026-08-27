@@ -13,7 +13,9 @@ import { renderApp } from "./render-app";
 import type { GoTrueSessionJSON } from "@billing/api/auth";
 
 const DASHBOARD_COPY = "Your dashboard arrives in Phase 8 — outstandings and revenue at a glance.";
-const BILLS_COPY = "Bill drafting arrives next — blank screen to final number in under 30 seconds.";
+// BillEntryScreen replaced the PlaceholderScreen (plan 04-04 Task 2); the
+// header title is the new anchor for this tracer assertion.
+const BILLS_COPY = "New Bill";
 
 const SESSION: GoTrueSessionJSON = { access_token: "at", refresh_token: "rt" };
 
