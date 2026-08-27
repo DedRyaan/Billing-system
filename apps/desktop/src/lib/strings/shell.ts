@@ -7,6 +7,7 @@ export const NAV_BILLS = "Bills";
 export const NAV_CUSTOMERS = "Customers";
 export const NAV_CATALOG = "Catalog";
 export const NAV_BUSINESSES = "Businesses";
+export const NAV_OUTSTANDINGS = "Outstandings";
 export const NAV_SETTINGS = "Settings";
 
 /** Role captions under the sidebar footer avatar ("Admin"/"Staff"). */

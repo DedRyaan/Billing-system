@@ -9,6 +9,7 @@ import * as Tooltip from "@radix-ui/react-tooltip";
 import {
   Building2,
   FileText,
+  IndianRupee,
   LayoutDashboard,
   Package,
   Settings,
@@ -20,6 +21,7 @@ import {
   NAV_CATALOG,
   NAV_CUSTOMERS,
   NAV_DASHBOARD,
+  NAV_OUTSTANDINGS,
   NAV_SETTINGS,
 } from "../lib/strings/shell";
 
@@ -34,6 +36,7 @@ export interface NavItem {
 export const NAV_ITEMS: readonly (NavItem & { adminOnly?: boolean })[] = [
   { key: "dashboard", label: NAV_DASHBOARD, to: "/dashboard", icon: <LayoutDashboard size={20} aria-hidden="true" /> },
   { key: "bills", label: NAV_BILLS, to: "/bills", icon: <FileText size={20} aria-hidden="true" /> },
+  { key: "outstandings", label: NAV_OUTSTANDINGS, to: "/outstandings", icon: <IndianRupee size={20} aria-hidden="true" /> },
   { key: "customers", label: NAV_CUSTOMERS, to: "/customers", icon: <Users size={20} aria-hidden="true" /> },
   { key: "catalog", label: NAV_CATALOG, to: "/catalog", icon: <Package size={20} aria-hidden="true" /> },
   { key: "businesses", label: NAV_BUSINESSES, to: "/businesses", icon: <Building2 size={20} aria-hidden="true" />, adminOnly: true },

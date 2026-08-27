@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
+import { useSearch } from "@tanstack/react-router";
 import {
   listCustomersByBusiness,
   type CustomerRow,
@@ -91,6 +92,25 @@ export function BillEntryScreen() {
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
 
   const businessId = biz.activeBusinessId;
+
+  // Deep-link: /bills?invoiceId=xxx opens InvoiceDetail directly.
+  const { invoiceId: targetInvoiceId } = useSearch({ strict: false }) as {
+    invoiceId?: string;
+  };
+
+  // When deep-linked, fetch the target invoice and switch to detail view.
+  useEffect(() => {
+    if (targetInvoiceId === undefined || auth.client === null || businessId === null) return;
+    let cancelled = false;
+    (async () => {
+      const res = await getInvoice(auth.client!, targetInvoiceId, businessId!);
+      if (cancelled || !res.ok) return;
+      setView({ kind: "detail", invoice: res.data, lines: res.data.invoice_lines });
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [targetInvoiceId, auth.client, businessId]);
 
   // --- Data fetching ---
   const customerQuery = useQuery({
