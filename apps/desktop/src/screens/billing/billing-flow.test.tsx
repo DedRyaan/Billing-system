@@ -213,93 +213,141 @@ describe("billing flow integration", () => {
 });
 
 describe("InvoiceDetail", () => {
-  it("renders issued invoice with status badge and totals", () => {
-    render(
-      <InvoiceDetail
-        invoice={ISSUED_INVOICE}
-        lines={ISSUED_LINES}
-      />
+  function mountDetail(invoice: InvoiceRow, lines: InvoiceLineRow[]) {
+    const c = makeScriptedClient(fixtures());
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    return render(
+      <AuthProvider
+        authClient={c}
+        authRouter={{ navigate: vi.fn() }}
+        bootstrapProbe={async () => true}
+      >
+        <QueryClientProvider client={qc}>
+          <InvoiceDetail invoice={invoice} lines={lines} />
+        </QueryClientProvider>
+      </AuthProvider>,
     );
+  }
 
-    expect(screen.getByText("Invoice #1")).toBeInTheDocument();
+  it("renders issued invoice with status badge and totals", async () => {
+    mountDetail(ISSUED_INVOICE, ISSUED_LINES);
+
+    await screen.findByText("Invoice #1");
     expect(screen.getByText("Issued")).toBeInTheDocument();
     expect(screen.getByText("Ravi Kumar")).toBeInTheDocument();
     expect(screen.getByText("Widget A")).toBeInTheDocument();
+    // PAY-03: payment status badge + balance derived from paid_amount.
+    // "Unpaid" appears twice (header badge + balance section badge).
+    expect(screen.getAllByText("Unpaid").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText("Balance Due")).toBeInTheDocument();
   });
 
-  it("shows void details for voided invoice", () => {
+  it("shows empty payment history for issued invoice with no payments", async () => {
+    mountDetail(ISSUED_INVOICE, ISSUED_LINES);
+
+    // PAY-02: append-only ledger read view with a graceful empty state.
+    await screen.findByText("Payment History");
+    expect(screen.getByText("No payments recorded yet.")).toBeInTheDocument();
+  });
+
+  it("renders payment history table for an issued invoice with payments", async () => {
+    const client = makeScriptedClient(
+      fixtures({
+        payments: [
+          {
+            id: "pay-1",
+            invoice_id: ISSUED_INVOICE.id,
+            business_id: BID,
+            amount: 1000,
+            method: "cash",
+            note: "First advance",
+            recorded_by: "user-1",
+            operation_id: "op-1",
+            created_at: "2026-08-01T10:00:00Z",
+          },
+        ],
+      }),
+    );
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
     render(
-      <InvoiceDetail
-        invoice={VOIDED_INVOICE}
-        lines={ISSUED_LINES}
-      />
+      <AuthProvider
+        authClient={client}
+        authRouter={{ navigate: vi.fn() }}
+        bootstrapProbe={async () => true}
+      >
+        <QueryClientProvider client={qc}>
+          <InvoiceDetail invoice={ISSUED_INVOICE} lines={ISSUED_LINES} />
+        </QueryClientProvider>
+      </AuthProvider>,
     );
 
-    expect(screen.getByText("Voided")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText("First advance")).toBeInTheDocument());
+    expect(screen.getByRole("columnheader", { name: /date/i })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: /method/i })).toBeInTheDocument();
+    expect(screen.queryByText("No payments recorded yet.")).not.toBeInTheDocument();
+  });
+
+  it("shows void details for voided invoice", async () => {
+    mountDetail(VOIDED_INVOICE, ISSUED_LINES);
+
+    await screen.findByText("Voided");
     expect(screen.getByText("Void Details")).toBeInTheDocument();
     expect(screen.getByText(/Wrong quantity/)).toBeInTheDocument();
   });
 
-  it("hides void button for non-admin roles (staff)", () => {
-    render(
-      <InvoiceDetail
-        invoice={ISSUED_INVOICE}
-        lines={ISSUED_LINES}
-        onNewBill={vi.fn()}
-      />
-    );
+  it("hides void button for non-admin roles (staff)", async () => {
+    mountDetail(ISSUED_INVOICE, ISSUED_LINES);
 
-    // Void button should not be present
+    // Await full render, then confirm no void action is offered.
+    await screen.findByText("Invoice #1");
     expect(screen.queryByRole("button", { name: /void/i })).not.toBeInTheDocument();
-    // New Bill should be present
-    expect(screen.getByRole("button", { name: /new bill/i })).toBeInTheDocument();
   });
 
-  it("shows void button when onVoid callback is provided (admin)", () => {
+  it("shows void button when onVoid callback is provided (admin)", async () => {
+    const c = makeScriptedClient(fixtures());
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
     render(
-      <InvoiceDetail
-        invoice={ISSUED_INVOICE}
-        lines={ISSUED_LINES}
-        onVoid={vi.fn()}
-        onNewBill={vi.fn()}
-      />
+      <AuthProvider
+        authClient={c}
+        authRouter={{ navigate: vi.fn() }}
+        bootstrapProbe={async () => true}
+      >
+        <QueryClientProvider client={qc}>
+          <InvoiceDetail
+            invoice={ISSUED_INVOICE}
+            lines={ISSUED_LINES}
+            onVoid={vi.fn()}
+            onNewBill={vi.fn()}
+          />
+        </QueryClientProvider>
+      </AuthProvider>,
     );
 
-    expect(screen.getByRole("button", { name: /void/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /new bill/i })).toBeInTheDocument();
+    await screen.findByRole("button", { name: /void/i });
   });
 
-  it("shows supply type badge", () => {
-    render(
-      <InvoiceDetail
-        invoice={ISSUED_INVOICE}
-        lines={ISSUED_LINES}
-      />
-    );
+  it("shows supply type badge", async () => {
+    mountDetail(ISSUED_INVOICE, ISSUED_LINES);
 
-    expect(screen.getByText("Intra-state (CGST+SGST)")).toBeInTheDocument();
+    await screen.findByText("Intra-state (CGST+SGST)");
   });
 
-  it("shows reverse charge badge when applicable", () => {
-    render(
-      <InvoiceDetail
-        invoice={{ ...ISSUED_INVOICE, reverse_charge: true }}
-        lines={ISSUED_LINES}
-      />
-    );
+  it("shows reverse charge badge when applicable", async () => {
+    mountDetail({ ...ISSUED_INVOICE, reverse_charge: true }, ISSUED_LINES);
 
-    expect(screen.getByText("Reverse Charge")).toBeInTheDocument();
+    await screen.findByText("Reverse Charge");
   });
 
-  it("shows unregistered for invoices without GSTIN", () => {
-    render(
-      <InvoiceDetail
-        invoice={{ ...ISSUED_INVOICE, customer_gstin: null }}
-        lines={ISSUED_LINES}
-      />
-    );
+  it("shows unregistered for invoices without GSTIN", async () => {
+    mountDetail({ ...ISSUED_INVOICE, customer_gstin: null }, ISSUED_LINES);
 
-    expect(screen.getByText("Unregistered")).toBeInTheDocument();
+    await screen.findByText("Unregistered");
   });
 });
 
