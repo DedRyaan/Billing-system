@@ -37,6 +37,7 @@ import { GstPreview } from "./GstPreview";
 import { useDraftTotals } from "./useDraftTotals";
 import { InvoiceDetail } from "./InvoiceDetail";
 import { VoidDialog } from "./VoidDialog";
+import { RecordPaymentDialog } from "./RecordPaymentDialog";
 import type { LineItemDraft } from "./billing-schema";
 
 let lineIdSeq = 0;
@@ -87,6 +88,7 @@ export function BillEntryScreen() {
   const [view, setView] = useState<ScreenView>({ kind: "draft" });
   const [finalizing, setFinalizing] = useState(false);
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
+  const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
 
   const businessId = biz.activeBusinessId;
 
@@ -298,6 +300,9 @@ export function BillEntryScreen() {
           onNewBill={handleNewBill}
           onBack={handleBack}
           {...(isAdmin ? { onVoid: () => setVoidDialogOpen(true) } : {})}
+          {...(view.invoice.status === "issued" && view.invoice.payment_status !== "paid"
+            ? { onRecordPayment: () => setRecordPaymentOpen(true) }
+            : {})}
         />
         {isAdmin && (
           <VoidDialog
@@ -309,6 +314,15 @@ export function BillEntryScreen() {
             onVoided={handleVoided}
           />
         )}
+        <RecordPaymentDialog
+          open={recordPaymentOpen}
+          onOpenChange={setRecordPaymentOpen}
+          invoiceId={view.invoice.id}
+          invoiceDocNumber={view.invoice.seq !== null ? `#${view.invoice.seq}` : "Draft"}
+          businessId={businessId ?? ""}
+          balance={Number(view.invoice.total_amount) - Number(view.invoice.paid_amount)}
+          paymentStatus={view.invoice.payment_status}
+        />
       </>
     );
   }
