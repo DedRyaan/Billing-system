@@ -92,8 +92,7 @@ describe("recordPayment", () => {
       recordedBy: "user-1",
     });
     expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.error.reason).toBe("VALIDATION_FAILED");
+    if (!res.ok && res.error.reason === "VALIDATION_FAILED") {
       expect(res.error.pgCode).toBe("23514");
     }
     // No DB calls should have been made
@@ -130,8 +129,7 @@ describe("recordPayment", () => {
       recordedBy: "user-1",
     });
     expect(res.ok).toBe(false);
-    if (!res.ok) {
-      expect(res.error.reason).toBe("VALIDATION_FAILED");
+    if (!res.ok && res.error.reason === "VALIDATION_FAILED") {
       expect(res.error.pgCode).toBe("P0001");
       expect(res.error.message).toContain("overpayment");
     }

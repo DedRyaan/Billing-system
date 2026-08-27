@@ -104,9 +104,9 @@ describe("toDataAccessError taxonomy", () => {
     });
   });
 
-  it("never swallows an unknown Postgres code into a generic string", () => {
-    const err = toDataAccessError({ code: "P0001", message: "raise_exception detail" });
-    expect(err).toEqual({ reason: "UNKNOWN", message: "raise_exception detail", code: "P0001" });
+  it("maps P0001 overpayment to VALIDATION_FAILED (payment trigger guard)", () => {
+    const err = toDataAccessError({ code: "P0001", message: "payment exceeds invoice balance" });
+    expect(err).toEqual({ reason: "VALIDATION_FAILED", message: "payment exceeds invoice balance", pgCode: "P0001" });
   });
 
   it("wraps plain errors as UNKNOWN", () => {

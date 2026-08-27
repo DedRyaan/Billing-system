@@ -50,6 +50,9 @@ function isPostgrestLike(err: unknown): err is PostgrestLikeError {
   );
 }
 
+/** Postgres exception code for overpayment (payments trigger P0001). */
+export const PAYMENT_OVERPAYMENT_CODE = "P0001" as const;
+
 /** Integrity/validation-class Postgres codes mapped to VALIDATION_FAILED. */
 const VALIDATION_PG_CODES = new Set([
   "23000", // integrity_constraint_violation
@@ -59,6 +62,7 @@ const VALIDATION_PG_CODES = new Set([
   "23505", // unique_violation
   "23514", // check_violation
   "22P02", // invalid_text_representation (bad enum/format input)
+  "P0001", // assert failure — overpayment guard (maintain_invoice_payment_totals)
 ]);
 
 const NETWORK_MESSAGE_PATTERNS = [

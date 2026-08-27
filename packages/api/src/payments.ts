@@ -118,21 +118,8 @@ export async function recordPayment(
       return fromPostgrest<PaymentRow>(Promise.resolve(dupe) as never);
     }
 
-    // P0001 = overpayment guard from maintain_invoice_payment_totals trigger.
-    // Post-maps to VALIDATION_FAILED (temporary: Task 3 adds P0001 to
-    // VALIDATION_PG_CODES so fromPostgrest handles this automatically).
-    if (code === "P0001") {
-      return {
-        ok: false,
-        error: {
-          reason: "VALIDATION_FAILED",
-          message:
-            (res.error as { message?: string }).message ??
-            "Payment exceeds invoice balance",
-          pgCode: "P0001",
-        },
-      };
-    }
+    // P0001 (overpayment) is now in VALIDATION_PG_CODES and maps to
+    // VALIDATION_FAILED automatically via fromPostgrest → toDataAccessError.
   }
 
   // All other errors (including P0001 overpayment, now mapped to

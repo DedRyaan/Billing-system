@@ -6,6 +6,8 @@ import { handleAuthSignIn } from "auth-sign-in-source";
 import {
   GENERIC_CREDENTIALS_ERROR_BODY,
   GENERIC_CREDENTIALS_MESSAGE,
+  PAYMENT_OVERPAYMENT_CODE,
+  toDataAccessError,
 } from "../src/errors";
 
 const HANDLER_ENV = {
@@ -66,5 +68,23 @@ describe("generic credentials copy has exactly ONE source", () => {
   it("shared constant shape is frozen (code + message)", () => {
     expect(GENERIC_CREDENTIALS_ERROR_BODY.error.code).toBe("invalid_credentials");
     expect(GENERIC_CREDENTIALS_MESSAGE).toBe("Invalid email or password.");
+  });
+});
+
+describe("toDataAccessError — payment overpayment mapping", () => {
+  it("P0001 maps to VALIDATION_FAILED with the Postgres code intact", () => {
+    const err = toDataAccessError({
+      code: PAYMENT_OVERPAYMENT_CODE,
+      message: "payment exceeds invoice balance - total 10000, ledger sum 11000 (overpayment rejected)",
+    });
+    expect(err.reason).toBe("VALIDATION_FAILED");
+    if (err.reason === "VALIDATION_FAILED") {
+      expect(err.pgCode).toBe("P0001");
+      expect(err.message).toContain("overpayment");
+    }
+  });
+
+  it("PAYMENT_OVERPAYMENT_CODE constant equals the literal string", () => {
+    expect(PAYMENT_OVERPAYMENT_CODE).toBe("P0001");
   });
 });
