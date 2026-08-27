@@ -20,6 +20,8 @@ export interface LineItemsTableProps {
   onAddLine: () => void;
   onAddCustomLine: () => void;
   totals: InvoiceTotals | null;
+  /** Disable all inputs during finalize loading state. */
+  disabled?: boolean;
 }
 
 const RATE_OPTIONS: ReadonlyArray<SelectOption> = CURRENT_SLABS_BPS.map((bps) => ({
@@ -34,6 +36,7 @@ export function LineItemsTable({
   onAddLine,
   onAddCustomLine,
   totals,
+  disabled = false,
 }: LineItemsTableProps) {
   const lineTotals = useMemo(() => {
     if (totals === null) return [];
@@ -77,6 +80,7 @@ export function LineItemsTable({
                     value={line.description}
                     onChange={(e) => updateLine(line.id, { description: e.target.value })}
                     className="h-8 text-sm"
+                    disabled={disabled}
                   />
                 </td>
                 <td className="px-sm py-xs">
@@ -84,6 +88,7 @@ export function LineItemsTable({
                     value={line.hsn_sac ?? ""}
                     onChange={(e) => updateLine(line.id, { hsn_sac: e.target.value })}
                     className="h-8 text-sm font-mono"
+                    disabled={disabled}
                   />
                 </td>
                 <td className="px-sm py-xs">
@@ -94,6 +99,7 @@ export function LineItemsTable({
                     value={line.quantity}
                     onChange={(e) => updateLine(line.id, { quantity: Number(e.target.value) })}
                     className="h-8 text-sm text-right"
+                    disabled={disabled}
                   />
                 </td>
                 <td className="px-sm py-xs">
@@ -101,6 +107,7 @@ export function LineItemsTable({
                     value={String(line.unit_price)}
                     onValueChange={(raw) => updateLine(line.id, { unit_price: Number(raw) || 0 })}
                     className="h-8 text-sm text-right"
+                    disabled={disabled}
                   />
                 </td>
                 <td className="px-sm py-xs">
@@ -112,6 +119,7 @@ export function LineItemsTable({
                     value={line.discount_pct}
                     onChange={(e) => updateLine(line.id, { discount_pct: Number(e.target.value) })}
                     className="h-8 text-sm text-right"
+                    disabled={disabled}
                   />
                 </td>
                 <td className="px-sm py-xs">
@@ -123,6 +131,7 @@ export function LineItemsTable({
                     }}
                     options={RATE_OPTIONS}
                     aria-label="GST rate"
+                    disabled={disabled}
                   />
                 </td>
                 <td className="px-sm py-xs text-right text-caption text-ink-secondary">

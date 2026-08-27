@@ -5,22 +5,38 @@
 // Draft state in React useState (R-49, D-82 — no DB persistence in v1).
 // Data fetching: listCustomersByBusiness + listCatalogItems via React Query.
 // Line operations: add from catalog, add custom ad-hoc, update, remove.
-// Finalize button is rendered but wired in a later plan (05).
+// Finalize wired: creates draft → finalizeInvoice() → InvoiceDetail view.
+// Void-and-reissue: admin-only void → replacement draft pre-populated (INV-06).
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useQuery } from "@tanstack/react-query";
-import { listCustomersByBusiness, type CustomerRow } from "@billing/api/customers";
+import {
+  listCustomersByBusiness,
+  type CustomerRow,
+} from "@billing/api/customers";
 import { listCatalogItems, type CatalogItemRow } from "@billing/api/catalog-items";
+import {
+  createDraftInvoice,
+  finalizeInvoice,
+  getInvoice,
+  type InvoiceRow,
+  type InvoiceLineRow,
+} from "@billing/api/invoices";
 import { keysFor } from "@billing/api/query-keys";
+import { deriveFinancialYear } from "@billing/gst";
 import { HeaderRow } from "../../shell/HeaderRow";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../auth/AuthProvider";
 import { useActiveBusiness } from "../../business/ActiveBusinessProvider";
 import { useOnlineStatus } from "../../shell/OfflineBanner";
+import { showToast } from "../../shell/toast-store";
 import { CustomerPicker } from "./CustomerPicker";
 import { ItemPicker } from "./ItemPicker";
 import { LineItemsTable } from "./LineItemsTable";
 import { GstPreview } from "./GstPreview";
 import { useDraftTotals } from "./useDraftTotals";
+import { InvoiceDetail } from "./InvoiceDetail";
+import { VoidDialog } from "./VoidDialog";
 import type { LineItemDraft } from "./billing-schema";
 
 let lineIdSeq = 0;
@@ -56,13 +72,21 @@ function lineFromCatalogItem(item: CatalogItemRow): LineItemDraft {
   };
 }
 
+type ScreenView =
+  | { kind: "draft" }
+  | { kind: "detail"; invoice: InvoiceRow; lines: InvoiceLineRow[] };
+
 export function BillEntryScreen() {
   const auth = useAuth();
   const biz = useActiveBusiness();
   const online = useOnlineStatus();
+  const queryClient = useQueryClient();
 
   const [lines, setLines] = useState<LineItemDraft[]>(() => [createEmptyLine()]);
   const [selectedCustomer, setSelectedCustomer] = useState<CustomerRow | null>(null);
+  const [view, setView] = useState<ScreenView>({ kind: "draft" });
+  const [finalizing, setFinalizing] = useState(false);
+  const [voidDialogOpen, setVoidDialogOpen] = useState(false);
 
   const businessId = biz.activeBusinessId;
 
@@ -144,11 +168,152 @@ export function BillEntryScreen() {
     // CustomerSheet for inline creation wired in a future plan.
   }, []);
 
-  // --- Finalize placeholder ---
-  const handleFinalize = useCallback(() => {
-    // Wired in Plan 05 — finalize-invoice Edge Function call.
+  // --- Finalize flow ---
+  const handleFinalize = useCallback(async () => {
+    if (auth.client === null || businessId === null || finalizing) return;
+
+    // Validate: at least one line with description
+    const validLines = lines.filter((l) => l.description.trim() !== "" && l.quantity > 0);
+    if (validLines.length === 0) {
+      showToast({ variant: "error", message: "Add at least one line item with a description" });
+      return;
+    }
+
+    // Create draft invoice first (for the server to reference)
+    const fyResult = deriveFinancialYear(new Date().toISOString().slice(0, 10));
+    if (!fyResult.ok) {
+      showToast({ variant: "error", message: "Could not determine financial year" });
+      return;
+    }
+
+    setFinalizing(true);
+    try {
+      const draftRes = await createDraftInvoice(auth.client, businessId, {
+        fy: fyResult.fy,
+        customer_id: selectedCustomer?.id ?? null,
+      });
+      if (!draftRes.ok) {
+        showToast({ variant: "error", message: `Failed to create draft: ${draftRes.error.message}` });
+        return;
+      }
+
+      const invoiceId = draftRes.data.id;
+
+      // Finalize
+      const result = await finalizeInvoice(auth.client, invoiceId, businessId);
+      if (!result.ok) {
+        showToast({ variant: "error", message: `Finalize failed: ${result.error.message}` });
+        return;
+      }
+
+      // Invalidate caches
+      await queryClient.invalidateQueries({
+        queryKey: keysFor.invoices(businessId),
+      });
+
+      showToast({
+        variant: "success",
+        message: `Invoice ${result.data.doc_number} finalized successfully`,
+      });
+
+      // Fetch the finalized invoice detail and show it
+      const detailRes = await getInvoice(auth.client, result.data.invoice_id, businessId);
+      if (detailRes.ok) {
+        setView({
+          kind: "detail",
+          invoice: detailRes.data,
+          lines: detailRes.data.invoice_lines,
+        });
+      }
+    } catch (err) {
+      showToast({
+        variant: "error",
+        message: err instanceof Error ? `Finalize failed: ${err.message}` : "Finalize failed",
+      });
+    } finally {
+      setFinalizing(false);
+    }
+  }, [auth.client, businessId, finalizing, lines, selectedCustomer, queryClient]);
+
+  // --- Void flow ---
+  const handleVoided = useCallback(
+    async (newDraftId: string) => {
+      if (auth.client === null || businessId === null) return;
+
+      // Fetch the new draft invoice + lines
+      const res = await getInvoice(auth.client, newDraftId, businessId);
+      if (!res.ok) {
+        showToast({ variant: "error", message: "Failed to load replacement draft" });
+        return;
+      }
+
+      const draftLines = res.data.invoice_lines;
+
+      // Pre-populate lines from voided invoice
+      const populatedLines: LineItemDraft[] = draftLines.map((dl) => ({
+        id: nextLineId(),
+        catalog_item_id: dl.catalog_item_id ?? null,
+        description: dl.description,
+        hsn_sac: dl.hsn_sac ?? undefined,
+        quantity: dl.quantity,
+        unit_price: Number(dl.unit_price_charged),
+        discount_pct: Number(dl.discount_pct),
+        gst_rate: Number(dl.gst_rate),
+        unit: "nos",
+      }));
+
+      setLines(populatedLines.length > 0 ? populatedLines : [createEmptyLine()]);
+      setView({ kind: "draft" });
+      showToast({
+        variant: "success",
+        message: "Draft created from voided invoice. Review and finalize.",
+      });
+    },
+    [auth.client, businessId],
+  );
+
+  // --- Handle new bill ---
+  const handleNewBill = useCallback(() => {
+    setLines([createEmptyLine()]);
+    setSelectedCustomer(null);
+    setView({ kind: "draft" });
   }, []);
 
+  // --- Handle back from detail view ---
+  const handleBack = useCallback(() => {
+    setLines([createEmptyLine()]);
+    setSelectedCustomer(null);
+    setView({ kind: "draft" });
+  }, []);
+
+  // --- Detail view ---
+  if (view.kind === "detail") {
+    const isAdmin = auth.role === "admin" || auth.role === "super_admin";
+    return (
+      <>
+        <HeaderRow title="Invoice" />
+        <InvoiceDetail
+          invoice={view.invoice}
+          lines={view.lines}
+          onNewBill={handleNewBill}
+          onBack={handleBack}
+          {...(isAdmin ? { onVoid: () => setVoidDialogOpen(true) } : {})}
+        />
+        {isAdmin && (
+          <VoidDialog
+            open={voidDialogOpen}
+            onOpenChange={setVoidDialogOpen}
+            invoiceId={view.invoice.id}
+            invoiceDocNumber={view.invoice.seq !== null ? `#${view.invoice.seq}` : "Draft"}
+            businessId={businessId ?? ""}
+            onVoided={handleVoided}
+          />
+        )}
+      </>
+    );
+  }
+
+  // --- Draft view ---
   return (
     <>
       <HeaderRow title="New Bill" />
@@ -177,12 +342,11 @@ export function BillEntryScreen() {
               onChange={setLines}
               onRemoveLine={removeLine}
               onAddLine={() => {
-                // Open item picker by adding a line then letting user interact
-                // For simplicity, just add a custom line with a search prompt
                 addCustomLine();
               }}
               onAddCustomLine={addCustomLine}
               totals={draftResult?.totals ?? null}
+              disabled={finalizing}
             />
           </div>
 
@@ -194,7 +358,7 @@ export function BillEntryScreen() {
             <ItemPicker
               items={catalogItems}
               onSelect={addLineFromCatalog}
-              disabled={!online || catalogItems.length === 0}
+              disabled={!online || catalogItems.length === 0 || finalizing}
               placeholder={catalogItems.length === 0 ? "No catalog items" : "Search catalog item…"}
             />
           </div>
@@ -208,9 +372,10 @@ export function BillEntryScreen() {
               variant="primary"
               size="lg"
               onClick={handleFinalize}
-              disabled={!online || lines.length === 0 || draftResult === null}
+              loading={finalizing}
+              disabled={!online || lines.length === 0 || draftResult === null || finalizing}
             >
-              Finalize
+              {finalizing ? "Finalizing…" : "Finalize"}
             </Button>
             <Button
               variant="secondary"
@@ -218,7 +383,7 @@ export function BillEntryScreen() {
                 setLines([createEmptyLine()]);
                 setSelectedCustomer(null);
               }}
-              disabled={!isDirty}
+              disabled={!isDirty || finalizing}
             >
               Discard
             </Button>
