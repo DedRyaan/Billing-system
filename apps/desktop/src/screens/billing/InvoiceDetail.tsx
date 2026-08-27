@@ -5,16 +5,22 @@
 // GSTINs, HSN/SAC, tax breakup, place of supply, reverse-charge indicator.
 // Issued invoices are fully immutable (INV-05). Voided invoices show the
 // void reason and consumed number permanently.
+import { useQuery } from "@tanstack/react-query";
 import { serializePaise } from "@billing/gst";
 import type { InvoiceRow, InvoiceLineRow } from "@billing/api/invoices";
+import { listPaymentsByInvoice, type PaymentRow } from "@billing/api/payments";
+import { keysFor } from "@billing/api/query-keys";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
+import { useAuth } from "../../auth/AuthProvider";
 
 export interface InvoiceDetailProps {
   invoice: InvoiceRow;
   lines: InvoiceLineRow[];
   /** Admin-only void handler — omitted for staff role. */
   onVoid?: () => void;
+  /** Record payment handler — passed for issued non-paid invoices only. */
+  onRecordPayment?: () => void;
   onNewBill?: () => void;
   onBack?: () => void;
 }
@@ -52,14 +58,30 @@ export function InvoiceDetail({
   invoice,
   lines,
   onVoid,
+  onRecordPayment,
   onNewBill,
   onBack,
 }: InvoiceDetailProps) {
+  const auth = useAuth();
   const sortedLines = [...lines].sort((a, b) => a.position - b.position);
 
   const totalCgst = lines.reduce((s, l) => s + Number(l.cgst_amount), 0);
   const totalSgst = lines.reduce((s, l) => s + Number(l.sgst_amount), 0);
   const totalIgst = lines.reduce((s, l) => s + Number(l.igst_amount), 0);
+
+  // Payment history (PAY-02 append-only ledger) — only fetched for issued
+  // invoices, which are the only documents that can carry payments.
+  const paymentsQuery = useQuery({
+    queryKey: keysFor.payments(invoice.business_id, invoice.id),
+    queryFn: async () => {
+      if (auth.client === null) throw new Error("invariant: no client");
+      const res = await listPaymentsByInvoice(auth.client, invoice.id, invoice.business_id);
+      if (!res.ok) throw new Error(res.error.message);
+      return res.data;
+    },
+    enabled: auth.client !== null && invoice.status === "issued",
+  });
+  const payments = paymentsQuery.data ?? [];
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-lg py-lg">
@@ -210,6 +232,47 @@ export function InvoiceDetail({
           </div>
         )}
 
+        {/* Payment history (issued only) — read-only append-only ledger (PAY-02) */}
+        {invoice.status === "issued" && (
+          <div className="rounded-md border border-hairline bg-surface px-md py-sm">
+            <h2 className="mb-xs text-caption font-semibold text-ink-secondary">Payment History</h2>
+            {payments.length === 0 ? (
+              <p className="text-caption text-ink-secondary">No payments recorded yet.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-body">
+                  <thead>
+                    <tr className="border-b border-hairline text-caption text-ink-secondary">
+                      <th className="px-sm py-xs text-left font-medium">Date</th>
+                      <th className="px-sm py-xs text-right font-medium">Amount</th>
+                      <th className="px-sm py-xs text-left font-medium">Method</th>
+                      <th className="px-sm py-xs text-left font-medium">Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {payments.map((p: PaymentRow) => (
+                      <tr key={p.id} className="border-b border-hairline/50">
+                        <td className="px-sm py-xs text-caption">
+                          {new Date(p.created_at).toLocaleDateString("en-IN")}
+                        </td>
+                        <td className="px-sm py-xs text-right text-caption">
+                          {fmtPaise(Number(p.amount))}
+                        </td>
+                        <td className="px-sm py-xs text-caption capitalize">
+                          {p.method?.replace("_", " ") ?? "—"}
+                        </td>
+                        <td className="px-sm py-xs text-caption text-ink-secondary">
+                          {p.note ?? "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Void details */}
         {invoice.status === "voided" && (
           <div className="rounded-md border border-danger/30 bg-danger-subtle px-md py-sm">
@@ -235,6 +298,11 @@ export function InvoiceDetail({
           {onNewBill && (
             <Button variant="primary" onClick={onNewBill}>
               New Bill
+            </Button>
+          )}
+          {onRecordPayment && invoice.status === "issued" && (
+            <Button variant="primary" onClick={onRecordPayment}>
+              Record Payment
             </Button>
           )}
           {onVoid && invoice.status === "issued" && (

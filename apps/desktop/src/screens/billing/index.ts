@@ -6,6 +6,8 @@ export { LineItemsTable } from "./LineItemsTable";
 export { GstPreview } from "./GstPreview";
 export { InvoiceListSection } from "./InvoiceListSection";
 export { InvoiceDetail } from "./InvoiceDetail";
+export { OutstandingsSection } from "./OutstandingsSection";
 export { VoidDialog } from "./VoidDialog";
+export { RecordPaymentDialog } from "./RecordPaymentDialog";
 export { useDraftTotals } from "./useDraftTotals";
 export type { LineItemDraft, BillFormData } from "./billing-schema";
