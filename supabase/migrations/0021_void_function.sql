@@ -9,7 +9,7 @@
 -- Design:
 --   1. Verify caller is admin/super_admin via profiles table (D-16)
 --   2. Read the issued invoice (status = 'issued' only)
---   3. Verify business membership via can_access_business()
+--   3. Verify business membership via direct business_members query
 --   4. Void the invoice (UPDATE status -> voided, populate voided_at/by/reason)
 --   5. Create replacement draft with copied lines (INV-06 void-and-reissue)
 --   6. Write audit trail via write_audit()
@@ -58,8 +58,14 @@ BEGIN
   END IF;
 
   -- 3. Verify business membership
-  IF NOT can_access_business(p_business_id) THEN
-    RAISE EXCEPTION 'no business access' USING errcode = 'insufficient_privilege';
+  --    Cannot use can_access_business() here because auth.uid() returns NULL
+  --    in the service_role RPC context. Direct check against business_members.
+  IF NOT EXISTS (
+    SELECT 1 FROM public.business_members
+     WHERE business_id = p_business_id AND user_id = p_caller_id
+  ) THEN
+    RAISE EXCEPTION 'no access to business %', p_business_id
+      USING errcode = 'insufficient_privilege';
   END IF;
 
   -- 4. Void the invoice (trigger allows service_role void via migration 0019)
