@@ -35,6 +35,19 @@ function statusBadge(status: InvoiceRow["status"]) {
   }
 }
 
+function paymentStatusBadge(status: string) {
+  switch (status) {
+    case "paid":
+      return <Badge tone="success">Paid</Badge>;
+    case "partial":
+      return <Badge tone="warning">Partial</Badge>;
+    case "unpaid":
+      return <Badge tone="danger">Unpaid</Badge>;
+    default:
+      return null;
+  }
+}
+
 export function InvoiceDetail({
   invoice,
   lines,
@@ -58,6 +71,7 @@ export function InvoiceDetail({
               {invoice.seq !== null ? `Invoice #${invoice.seq}` : "Draft Invoice"}
             </h1>
             {statusBadge(invoice.status)}
+            {invoice.status === "issued" && paymentStatusBadge(invoice.payment_status)}
           </div>
           <span className="text-caption text-ink-secondary">
             {invoice.issued_at
@@ -177,6 +191,24 @@ export function InvoiceDetail({
             )}
           </div>
         </div>
+
+        {/* Payment balance (issued only) — derived from trigger-maintained
+            paid_amount, never computed optimistically (T-05-09). */}
+        {invoice.status === "issued" && (
+          <div className="rounded-md border border-hairline bg-surface px-md py-sm">
+            <div className="flex items-center justify-between text-body">
+              <span className="text-ink-secondary">Paid</span>
+              <span>{fmtPaise(Number(invoice.paid_amount))}</span>
+            </div>
+            <div className="mt-xs flex items-center justify-between border-t border-hairline pt-xs text-body font-semibold">
+              <span>Balance Due</span>
+              <span>{fmtPaise(Number(invoice.total_amount) - Number(invoice.paid_amount))}</span>
+            </div>
+            <div className="mt-xs flex items-center gap-sm">
+              {paymentStatusBadge(invoice.payment_status)}
+            </div>
+          </div>
+        )}
 
         {/* Void details */}
         {invoice.status === "voided" && (
