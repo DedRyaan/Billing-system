@@ -304,7 +304,7 @@ describe("InvoiceDetail", () => {
 
     await screen.findByText("Voided");
     expect(screen.getByText("Payment History")).toBeInTheDocument();
-    expect(screen.getByText("No payments recorded yet.")).toBeInTheDocument();
+    await screen.findByText("No payments recorded yet.");
   });
 
   it("shows a retryable error instead of the no-payments copy when history fails", async () => {
