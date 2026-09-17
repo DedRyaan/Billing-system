@@ -3,7 +3,7 @@
 // pattern exactly.
 //
 // Locked decisions:
-//   T-05-07   operation_id generated once via crypto.randomUUID() per submit
+//   T-05-07   operation_id generated once per opening and retained across retries
 //   T-05-06   MoneyInput + parseFloat pre-validation; DB trigger as backstop
 //   T-05-05   recorded_by set from auth.profile.id (server-verified)
 //   PAY-01    recordPayment via @billing/api/payments (direct RLS insert)
@@ -11,7 +11,7 @@
 //
 // DB stores amounts as numeric(14,2) in rupees. MoneyInput captures a
 // rupee string; parseFloat converts to the number passed to recordPayment.
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { recordPayment } from "@billing/api/payments";
 import { keysFor } from "@billing/api/query-keys";
@@ -62,12 +62,22 @@ export function RecordPaymentDialog({
   const [note, setNote] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
+  const operationIdRef = useRef("");
+  const pendingInputRef = useRef<Parameters<typeof recordPayment>[1] | null>(null);
+  useEffect(() => {
+    operationIdRef.current = open ? crypto.randomUUID() : "";
+    pendingInputRef.current = null;
+    setAmount("");
+    setMethod("cash");
+    setNote("");
+  }, [open, invoiceId, businessId]);
+
   // Ref to latest handleSubmit so showMutationFailure retry calls the
   // current closure without stale-capture issues.
   const latestSubmitRef = useRef<() => void>(() => {});
 
   const handleSubmit = useCallback(async () => {
-    if (auth.client === null || businessId === "" || amount === "") return;
+    if (!open || submitting || auth.client === null || businessId === "" || amount === "") return;
 
     const parsed = parseFloat(amount);
     if (isNaN(parsed) || parsed <= 0) {
@@ -77,28 +87,26 @@ export function RecordPaymentDialog({
 
     setSubmitting(true);
     try {
-      // T-05-07: operation_id generated ONCE per submit attempt — never
-      // regenerated on retry, so the 23505 idempotent backstop works.
-      const operationId = crypto.randomUUID();
-      const recordedBy = auth.profile?.id ?? "";
-
-      const result = await recordPayment(auth.client, {
+      // Preserve the logical operation AND payload after an ambiguous failure.
+      pendingInputRef.current ??= {
         invoiceId,
         businessId,
         amount: parsed,
         method,
         note: note.trim() || null,
-        operationId,
-        recordedBy,
-      });
+        operationId: operationIdRef.current,
+        recordedBy: auth.profile?.id ?? "",
+      };
+      const result = await recordPayment(auth.client, pendingInputRef.current);
 
       if (!result.ok) {
         if (result.error.reason === "VALIDATION_FAILED") {
           // Surfaces "payment exceeds invoice balance" (P0001) or
           // "must be greater than zero" (pre-validation).
+          pendingInputRef.current = null; // Definitive rejection: allow correction.
           showToast({ variant: "error", message: result.error.message });
         } else {
-          showMutationFailure("payment", latestSubmitRef.current);
+          showMutationFailure("payment", () => latestSubmitRef.current());
         }
         // Do NOT close dialog on error — user can fix and retry.
         setSubmitting(false);
@@ -119,11 +127,11 @@ export function RecordPaymentDialog({
       setMethod("cash");
       setNote("");
     } catch {
-      // Error shown via toast in the API module
+      showMutationFailure("payment", () => latestSubmitRef.current());
     } finally {
       setSubmitting(false);
     }
-  }, [auth.client, auth.profile?.id, businessId, amount, invoiceId, method, note, onOpenChange, queryClient]);
+  }, [open, submitting, auth.client, auth.profile?.id, businessId, amount, invoiceId, method, note, onOpenChange, queryClient]);
 
   // Keep ref current so retry always calls latest handleSubmit.
   latestSubmitRef.current = () => {
