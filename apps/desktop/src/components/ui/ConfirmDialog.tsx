@@ -32,7 +32,7 @@ export function ConfirmDialog({
       <Dialog.Portal>
         <Dialog.Overlay
           className="fixed inset-0 bg-[color:var(--color-scrim)]"
-          style={{ animationDuration: "var(--duration-base)" }}
+          style={{ animationDuration: "var(--duration-base)", zIndex: 60 }}
         />
         <Dialog.Content
           aria-describedby={undefined}
@@ -44,6 +44,7 @@ export function ConfirmDialog({
             e.preventDefault();
             onOpenChange(false);
           }}
+          style={{ zIndex: 70 }}
           className="fixed left-1/2 top-1/2 w-(--width-confirm-dialog) max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 rounded-xl border border-hairline bg-surface p-xl shadow-dialog"
         >
           <Dialog.Title className="text-heading text-ink">{title}</Dialog.Title>
