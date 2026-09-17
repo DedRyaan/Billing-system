@@ -2,8 +2,8 @@
 // age (oldest first), with drill-down to invoice detail (PAY-04).
 //
 // Fetches via listOutstandingInvoices (issued + payment_status <> 'paid').
-// Each row shows: invoice number, customer name, balance, age in days,
-// payment status badge. Clicking navigates to /bills?invoiceId=xxx.
+// Each row shows: invoice number, customer, issued date, total, paid,
+// balance, age in days, and payment status badge. Clicking navigates to /bills?invoiceId=xxx.
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
@@ -53,6 +53,37 @@ export function OutstandingsSection() {
 
   const invoices = useMemo(() => query.data ?? [], [query.data]);
 
+  // #22: only a successful, empty read may claim "All invoices are fully
+  // paid." Pending and failed reads render their own states so a network
+  // failure never looks like good financial news.
+  if (query.isPending) {
+    return (
+      <div className="flex flex-col gap-xs">
+        <h2 className="text-caption text-ink-secondary">Outstanding Dues</h2>
+        <p className="text-caption text-ink-secondary">Loading outstanding dues…</p>
+      </div>
+    );
+  }
+  if (query.isError) {
+    return (
+      <div className="flex flex-col gap-xs">
+        <h2 className="text-caption text-ink-secondary">Outstanding Dues</h2>
+        <div className="rounded-md border border-hairline bg-surface px-md py-sm">
+          <p className="text-caption text-ink-secondary">
+            Couldn’t load outstanding dues.
+          </p>
+          <button
+            type="button"
+            onClick={() => void query.refetch()}
+            className="mt-xs cursor-pointer text-caption font-medium text-ink underline"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (invoices.length === 0) {
     return (
       <EmptyState
@@ -79,7 +110,7 @@ export function OutstandingsSection() {
               onClick={() =>
                 navigate({ to: "/bills", search: { invoiceId: inv.id } })
               }
-              className="flex items-center justify-between rounded-md border border-hairline bg-surface px-sm py-xs text-left text-body transition-colors cursor-pointer hover:bg-paper"
+              className="flex flex-wrap items-center justify-between gap-sm rounded-md border border-hairline bg-surface px-sm py-xs text-left text-body transition-colors cursor-pointer hover:bg-paper"
             >
               <div className="flex flex-col">
                 <span className="font-medium">
@@ -88,11 +119,17 @@ export function OutstandingsSection() {
                 <span className="text-caption text-ink-secondary">
                   {inv.customer_name ?? "No customer"}
                 </span>
+                <span className="text-caption text-ink-secondary">
+                  Issued: {inv.issued_at ? new Date(inv.issued_at).toLocaleDateString("en-IN") : "—"}
+                </span>
               </div>
               <div className="flex items-center gap-sm">
                 <div className="flex flex-col items-end">
                   <span className="text-caption font-medium">
                     {fmtPaise(balance)}
+                  </span>
+                  <span className="text-caption text-ink-secondary">
+                    Total: {fmtPaise(Number(inv.total_amount))} · Paid: {fmtPaise(Number(inv.paid_amount))}
                   </span>
                   <span className="text-caption text-ink-secondary">
                     {ageDays}d overdue
