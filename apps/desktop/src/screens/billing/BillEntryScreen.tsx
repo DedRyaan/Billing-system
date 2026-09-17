@@ -369,6 +369,7 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
           businessId={businessId ?? ""}
           balance={Number(view.invoice.total_amount) - Number(view.invoice.paid_amount)}
           paymentStatus={view.invoice.payment_status}
+          invoiceStatus={view.invoice.status}
           onRecorded={handlePaymentRecorded}
         />
       </>

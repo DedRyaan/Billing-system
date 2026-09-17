@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, act } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { recordPayment } from "@billing/api/payments";
-import { showMutationFailure } from "../../shell/toast-store";
+import { showMutationFailure, showToast } from "../../shell/toast-store";
 import { RecordPaymentDialog } from "./RecordPaymentDialog";
 
 vi.mock("@billing/api/payments", () => ({ recordPayment: vi.fn() }));
@@ -60,6 +60,39 @@ describe("RecordPaymentDialog retry lifecycle", () => {
     submit();
     await waitFor(() => expect(recordPayment).toHaveBeenCalledTimes(3));
     expect(vi.mocked(recordPayment).mock.calls[2]![1].operationId).not.toBe(first.operationId);
+  });
+
+  it.each(["draft", "voided"] as const)("blocks submission when status changes to %s while open", async (status) => {
+    const qc = new QueryClient();
+    const onOpenChange = vi.fn();
+    const dialog = (invoiceStatus: "issued" | "draft" | "voided") => (
+      <QueryClientProvider client={qc}>
+        <RecordPaymentDialog open onOpenChange={onOpenChange} invoiceId="inv-1"
+          invoiceDocNumber="#1" businessId="biz-1" balance={200}
+          paymentStatus="unpaid" invoiceStatus={invoiceStatus} />
+      </QueryClientProvider>
+    );
+    const view = render(dialog("issued"));
+    fireEvent.change(screen.getByLabelText("Amount (₹)"), { target: { value: "100" } });
+    view.rerender(dialog(status));
+    fireEvent.click(screen.getByRole("button", { name: "Record Payment" }));
+    expect(recordPayment).not.toHaveBeenCalled();
+    expect(showToast).toHaveBeenCalledWith({ variant: "error", message: "Unable to record payment. Check invoice details and try again." });
+    expect(onOpenChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("allows submission with issued status", async () => {
+    vi.mocked(recordPayment).mockResolvedValue({ ok: true, data: payment });
+    const onOpenChange = vi.fn();
+    render(<QueryClientProvider client={new QueryClient()}>
+      <RecordPaymentDialog open onOpenChange={onOpenChange} invoiceId="inv-1"
+        invoiceDocNumber="#1" businessId="biz-1" balance={200}
+        paymentStatus="unpaid" invoiceStatus="issued" />
+    </QueryClientProvider>);
+    submit();
+    await waitFor(() => expect(onOpenChange).toHaveBeenCalledWith(false));
+    expect(recordPayment).toHaveBeenCalledTimes(1);
   });
 
   it("keeps the ID but allows correcting a definitively rejected payment", async () => {

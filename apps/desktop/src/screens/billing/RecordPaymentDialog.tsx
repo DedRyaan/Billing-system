@@ -45,6 +45,7 @@ export interface RecordPaymentDialogProps {
   /** Balance in rupees (total_amount − paid_amount, both numeric(14,2)). */
   balance: number;
   paymentStatus: string;
+  invoiceStatus?: "draft" | "issued" | "voided";
   onRecorded?: (invoiceId: string) => Promise<void>;
 }
 
@@ -55,6 +56,7 @@ export function RecordPaymentDialog({
   invoiceDocNumber,
   businessId,
   balance,
+  invoiceStatus,
   onRecorded,
 }: RecordPaymentDialogProps) {
   const auth = useAuth();
@@ -80,6 +82,11 @@ export function RecordPaymentDialog({
 
   const handleSubmit = useCallback(async () => {
     if (!open || submitting || auth.client === null || businessId === "" || amount === "") return;
+
+    if (invoiceStatus !== undefined && invoiceStatus !== "issued") {
+      showToast({ variant: "error", message: "Unable to record payment. Check invoice details and try again." });
+      return;
+    }
 
     const parsed = parseFloat(amount);
     if (isNaN(parsed) || parsed <= 0) {
@@ -136,7 +143,7 @@ export function RecordPaymentDialog({
     } finally {
       setSubmitting(false);
     }
-  }, [open, submitting, auth.client, auth.profile?.id, businessId, amount, invoiceId, method, note, onOpenChange, onRecorded, queryClient]);
+  }, [open, submitting, auth.client, auth.profile?.id, businessId, amount, invoiceId, invoiceStatus, method, note, onOpenChange, onRecorded, queryClient]);
 
   // Keep ref current so retry always calls latest handleSubmit.
   latestSubmitRef.current = () => {
