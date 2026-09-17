@@ -213,8 +213,8 @@ describe("billing flow integration", () => {
 });
 
 describe("InvoiceDetail", () => {
-  function mountDetail(invoice: InvoiceRow, lines: InvoiceLineRow[]) {
-    const c = makeScriptedClient(fixtures());
+  function mountDetail(invoice: InvoiceRow, lines: InvoiceLineRow[], clientOverride?: ReturnType<typeof makeScriptedClient>) {
+    const c = clientOverride ?? makeScriptedClient(fixtures());
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     });
@@ -248,8 +248,7 @@ describe("InvoiceDetail", () => {
     mountDetail(ISSUED_INVOICE, ISSUED_LINES);
 
     // PAY-02: append-only ledger read view with a graceful empty state.
-    await screen.findByText("Payment History");
-    expect(screen.getByText("No payments recorded yet.")).toBeInTheDocument();
+    await screen.findByText("No payments recorded yet.");
   });
 
   it.each([ISSUED_INVOICE, VOIDED_INVOICE])("renders payment history table for a $status invoice with payments", async (invoice) => {
@@ -306,6 +305,20 @@ describe("InvoiceDetail", () => {
     await screen.findByText("Voided");
     expect(screen.getByText("Payment History")).toBeInTheDocument();
     expect(screen.getByText("No payments recorded yet.")).toBeInTheDocument();
+  });
+
+  it("shows a retryable error instead of the no-payments copy when history fails", async () => {
+    // The scripted client serves rows from `tables`; a request against an
+    // unregistered table name yields a Postgrest-style error envelope.
+    const failing = makeScriptedClient(fixtures());
+    vi.spyOn(failing, "from").mockImplementation(() => {
+      throw new Error("network unreachable");
+    });
+    mountDetail(ISSUED_INVOICE, ISSUED_LINES, failing);
+
+    await screen.findByText(/Couldn’t load payment history/);
+    expect(screen.queryByText("No payments recorded yet.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /try again/i })).toBeInTheDocument();
   });
 
   it("shows void details for voided invoice", async () => {

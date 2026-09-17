@@ -236,7 +236,22 @@ export function InvoiceDetail({
         {hasPaymentHistory && (
           <div className="rounded-md border border-hairline bg-surface px-md py-sm">
             <h2 className="mb-xs text-caption font-semibold text-ink-secondary">Payment History</h2>
-            {payments.length === 0 ? (
+            {paymentsQuery.isPending ? (
+              <p className="text-caption text-ink-secondary">Loading payment history…</p>
+            ) : paymentsQuery.isError ? (
+              <div>
+                <p className="text-caption text-ink-secondary">
+                  Couldn’t load payment history.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void paymentsQuery.refetch()}
+                  className="mt-xs cursor-pointer text-caption font-medium text-ink underline"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : payments.length === 0 ? (
               <p className="text-caption text-ink-secondary">No payments recorded yet.</p>
             ) : (
               <div className="overflow-x-auto">
