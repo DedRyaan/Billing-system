@@ -69,8 +69,8 @@ export function InvoiceDetail({
   const totalSgst = lines.reduce((s, l) => s + Number(l.sgst_amount), 0);
   const totalIgst = lines.reduce((s, l) => s + Number(l.igst_amount), 0);
 
-  // Payment history (PAY-02 append-only ledger) — only fetched for issued
-  // invoices, which are the only documents that can carry payments.
+  // Payment history survives voiding (PAY-02 append-only ledger).
+  const hasPaymentHistory = invoice.status === "issued" || invoice.status === "voided";
   const paymentsQuery = useQuery({
     queryKey: keysFor.payments(invoice.business_id, invoice.id),
     queryFn: async () => {
@@ -79,7 +79,7 @@ export function InvoiceDetail({
       if (!res.ok) throw new Error(res.error.message);
       return res.data;
     },
-    enabled: auth.client !== null && invoice.status === "issued",
+    enabled: auth.client !== null && hasPaymentHistory,
   });
   const payments = paymentsQuery.data ?? [];
 
@@ -232,8 +232,8 @@ export function InvoiceDetail({
           </div>
         )}
 
-        {/* Payment history (issued only) — read-only append-only ledger (PAY-02) */}
-        {invoice.status === "issued" && (
+        {/* Payment history — retained for issued and voided invoices (PAY-02) */}
+        {hasPaymentHistory && (
           <div className="rounded-md border border-hairline bg-surface px-md py-sm">
             <h2 className="mb-xs text-caption font-semibold text-ink-secondary">Payment History</h2>
             {payments.length === 0 ? (

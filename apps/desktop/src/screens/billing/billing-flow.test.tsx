@@ -252,7 +252,7 @@ describe("InvoiceDetail", () => {
     expect(screen.getByText("No payments recorded yet.")).toBeInTheDocument();
   });
 
-  it("renders payment history table for an issued invoice with payments", async () => {
+  it.each([ISSUED_INVOICE, VOIDED_INVOICE])("renders payment history table for a $status invoice with payments", async (invoice) => {
     const client = makeScriptedClient(
       fixtures({
         payments: [
@@ -280,7 +280,7 @@ describe("InvoiceDetail", () => {
         bootstrapProbe={async () => true}
       >
         <QueryClientProvider client={qc}>
-          <InvoiceDetail invoice={ISSUED_INVOICE} lines={ISSUED_LINES} />
+          <InvoiceDetail invoice={invoice} lines={ISSUED_LINES} onRecordPayment={vi.fn()} />
         </QueryClientProvider>
       </AuthProvider>,
     );
@@ -289,6 +289,21 @@ describe("InvoiceDetail", () => {
     expect(screen.getByRole("columnheader", { name: /date/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /method/i })).toBeInTheDocument();
     expect(screen.queryByText("No payments recorded yet.")).not.toBeInTheDocument();
+    // Voided invoices keep their recorded history, but never offer the
+    // Record Payment action again.
+    if (invoice.status === "voided") {
+      expect(screen.queryByRole("button", { name: /record payment/i })).not.toBeInTheDocument();
+    } else {
+      expect(screen.getByRole("button", { name: /record payment/i })).toBeInTheDocument();
+    }
+  });
+
+  it("shows the Payment History section for a voided invoice with no payments", async () => {
+    mountDetail(VOIDED_INVOICE, ISSUED_LINES);
+
+    await screen.findByText("Voided");
+    expect(screen.getByText("Payment History")).toBeInTheDocument();
+    expect(screen.getByText("No payments recorded yet.")).toBeInTheDocument();
   });
 
   it("shows void details for voided invoice", async () => {
