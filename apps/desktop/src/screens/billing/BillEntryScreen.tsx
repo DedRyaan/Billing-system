@@ -308,6 +308,19 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
     [auth.client, businessId],
   );
 
+  const handlePaymentRecorded = useCallback(async (invoiceId: string) => {
+    if (auth.client === null || businessId === null) return;
+    const res = await getInvoice(auth.client, invoiceId, businessId);
+    if (!res.ok) {
+      showToast({ variant: "error", message: "Payment recorded, but invoice refresh failed. Reopen the invoice to refresh." });
+      return;
+    }
+    setView((current) => current.kind === "detail" && current.invoice.id === invoiceId
+      && current.invoice.business_id === businessId
+      ? { kind: "detail", invoice: res.data, lines: res.data.invoice_lines }
+      : current);
+  }, [auth.client, businessId]);
+
   // --- Handle new bill ---
   const handleNewBill = useCallback(() => {
     setLines([createEmptyLine()]);
@@ -356,6 +369,7 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
           businessId={businessId ?? ""}
           balance={Number(view.invoice.total_amount) - Number(view.invoice.paid_amount)}
           paymentStatus={view.invoice.payment_status}
+          onRecorded={handlePaymentRecorded}
         />
       </>
     );

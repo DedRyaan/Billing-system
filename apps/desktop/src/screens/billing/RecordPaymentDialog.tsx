@@ -45,6 +45,7 @@ export interface RecordPaymentDialogProps {
   /** Balance in rupees (total_amount − paid_amount, both numeric(14,2)). */
   balance: number;
   paymentStatus: string;
+  onRecorded?: (invoiceId: string) => Promise<void>;
 }
 
 export function RecordPaymentDialog({
@@ -54,6 +55,7 @@ export function RecordPaymentDialog({
   invoiceDocNumber,
   businessId,
   balance,
+  onRecorded,
 }: RecordPaymentDialogProps) {
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -121,6 +123,9 @@ export function RecordPaymentDialog({
         queryKey: keysFor.payments(businessId, invoiceId),
       });
 
+      await queryClient.invalidateQueries({ queryKey: keysFor.outstandings(businessId) });
+      await onRecorded?.(invoiceId);
+
       showToast({ variant: "success", message: "Payment recorded" });
       onOpenChange(false);
       setAmount("");
@@ -131,7 +136,7 @@ export function RecordPaymentDialog({
     } finally {
       setSubmitting(false);
     }
-  }, [open, submitting, auth.client, auth.profile?.id, businessId, amount, invoiceId, method, note, onOpenChange, queryClient]);
+  }, [open, submitting, auth.client, auth.profile?.id, businessId, amount, invoiceId, method, note, onOpenChange, onRecorded, queryClient]);
 
   // Keep ref current so retry always calls latest handleSubmit.
   latestSubmitRef.current = () => {
