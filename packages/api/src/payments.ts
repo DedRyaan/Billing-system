@@ -129,8 +129,9 @@ export async function recordPayment(
 }
 
 /**
- * List all payments for a specific invoice (PAY-03), ordered by created_at ASC
- * (chronological ledger).
+ * List payments for a specific invoice (PAY-03), ordered by created_at ASC.
+ * V1 retrieval is bounded at 1000 rows per business-scoped request (further
+ * scoped to this invoice), matching the DB API max_rows cap; no pagination.
  */
 export async function listPaymentsByInvoice(
   client: SupabaseClient,
@@ -142,7 +143,7 @@ export async function listPaymentsByInvoice(
     .select("*")
     .eq("invoice_id", invoiceId)
     .eq("business_id", businessId)
-    .order("created_at", { ascending: true })) as RowEnvelope;
+    .order("created_at", { ascending: true }).limit(1000)) as RowEnvelope;
   return fromPostgrest<PaymentRow[]>(Promise.resolve(res) as never);
 }
 
@@ -150,6 +151,8 @@ export async function listPaymentsByInvoice(
  * List outstanding invoices for a business (PAY-04): issued documents where
  * payment_status is not 'paid', sorted by issued_at ASC (oldest first = most
  * overdue). Balance = total_amount - paid_amount (trigger-maintained).
+ * V1 retrieval is bounded at 1000 rows per business-scoped request, matching
+ * the DB API max_rows cap; no pagination.
  */
 export async function listOutstandingInvoices(
   client: SupabaseClient,
@@ -161,6 +164,6 @@ export async function listOutstandingInvoices(
     .eq("business_id", businessId)
     .eq("status", "issued")
     .neq("payment_status", "paid")
-    .order("issued_at", { ascending: true })) as RowEnvelope;
+    .order("issued_at", { ascending: true }).limit(1000)) as RowEnvelope;
   return fromPostgrest<InvoiceRow[]>(Promise.resolve(res) as never);
 }
