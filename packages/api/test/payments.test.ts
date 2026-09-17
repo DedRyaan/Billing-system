@@ -231,6 +231,46 @@ describe("listPaymentsByInvoice", () => {
       expect(res.data).toEqual([]);
     }
   });
+
+  it("pages through payments until a short page, returning the complete ledger", async () => {
+    const fake = makeClient();
+    const PAGE = 500;
+    const mk = (n: number) => ({
+      ...PAYMENT_ROW,
+      id: `pay-${String(n).padStart(5, "0")}`,
+      created_at: `2026-08-${String(1 + (n % 28)).padStart(2, "0")}T10:00:00Z`,
+    });
+    // Page 1: exactly PAGE_SIZE rows (triggers a second request).
+    fake.next(Array.from({ length: PAGE }, (_, i) => mk(i)));
+    // Page 2: short page — terminal.
+    fake.next([mk(999)]);
+    const res = await listPaymentsByInvoice(fake.client, "inv-1", "b-1");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data).toHaveLength(PAGE + 1);
+      expect(res.data[res.data.length - 1]!.id).toBe("pay-00999");
+    }
+    expect(fake.calls).toHaveLength(2);
+    const second = fake.calls[1]!;
+    const orFilter = second.filters.find((f) => f.op === "or");
+    expect(orFilter).toBeDefined();
+    // Keyset cursor is built from the LAST row of page 1.
+    expect(String(orFilter!.val)).toContain(`id.gt.pay-${String(PAGE - 1).padStart(5, "0")}`);
+  });
+
+  it("fails the whole call when a later page errors (no partial success)", async () => {
+    const fake = makeClient();
+    const PAGE = 500;
+    const mk = (n: number) => ({
+      ...PAYMENT_ROW,
+      id: `pay-${String(n).padStart(5, "0")}`,
+      created_at: "2026-08-01T10:00:00Z",
+    });
+    fake.next(Array.from({ length: PAGE }, (_, i) => mk(i)));
+    fake.next(null, { code: "42501", message: "permission denied" });
+    const res = await listPaymentsByInvoice(fake.client, "inv-1", "b-1");
+    expect(res.ok).toBe(false);
+  });
 });
 
 describe("listOutstandingInvoices", () => {
@@ -262,5 +302,59 @@ describe("listOutstandingInvoices", () => {
     if (res.ok) {
       expect(res.data).toEqual([]);
     }
+  });
+
+  it("pages through outstanding invoices until a short page", async () => {
+    const fake = makeClient();
+    const PAGE = 500;
+    const mk = (n: number) => ({
+      ...INVOICE_ROW,
+      id: `inv-${String(n).padStart(5, "0")}`,
+      issued_at: "2026-08-15T00:00:00Z",
+    });
+    fake.next(Array.from({ length: PAGE }, (_, i) => mk(i)));
+    fake.next([]);
+    const res = await listOutstandingInvoices(fake.client, "b-1");
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.data).toHaveLength(PAGE);
+    }
+    expect(fake.calls).toHaveLength(2);
+    const second = fake.calls[1]!;
+    const orFilter = second.filters.find((f) => f.op === "or");
+    expect(orFilter).toBeDefined();
+    expect(String(orFilter!.val)).toContain("issued_at.gt.2026-08-15T00:00:00Z");
+  });
+
+  it("continues through null issued dates instead of returning a truncated success", async () => {
+    const fake = makeClient();
+    const rows = Array.from({ length: 501 }, (_, i) => ({
+      ...INVOICE_ROW,
+      id: `inv-${String(i).padStart(5, "0")}`,
+      issued_at: null,
+    }));
+    fake.next(rows.slice(0, 500));
+    fake.next(rows.slice(500));
+    const res = await listOutstandingInvoices(fake.client, "b-1");
+    expect(res).toEqual({ ok: true, data: rows });
+    expect(fake.calls).toHaveLength(2);
+    expect(fake.calls[1]!.filters).toContainEqual({
+      col: "__or",
+      op: "or",
+      val: "and(issued_at.is.null,id.gt.inv-00499)",
+    });
+  });
+
+  it("fails whole call when an outstanding page errors", async () => {
+    const fake = makeClient();
+    fake.next(
+      Array.from(
+        { length: 500 },
+        (_, i) => ({ ...INVOICE_ROW, id: `inv-${i}`, issued_at: "2026-08-15T00:00:00Z" }),
+      ),
+    );
+    fake.next(null, { code: "42501", message: "permission denied" });
+    const res = await listOutstandingInvoices(fake.client, "b-1");
+    expect(res.ok).toBe(false);
   });
 });

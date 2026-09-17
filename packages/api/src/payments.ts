@@ -128,42 +128,76 @@ export async function recordPayment(
   return fromPostgrest<PaymentRow>(Promise.resolve(res) as never);
 }
 
-/**
- * List payments for a specific invoice (PAY-03), ordered by created_at ASC.
- * V1 retrieval is bounded at 1000 rows per business-scoped request (further
- * scoped to this invoice), matching the DB API max_rows cap; no pagination.
- */
+const PAYMENT_PAGE_SIZE = 500;
+
 export async function listPaymentsByInvoice(
   client: SupabaseClient,
   invoiceId: string,
   businessId: string,
 ): Promise<Result<PaymentRow[]>> {
-  const res = (await client
-    .from("payments")
-    .select("*")
-    .eq("invoice_id", invoiceId)
-    .eq("business_id", businessId)
-    .order("created_at", { ascending: true }).limit(1000)) as RowEnvelope;
-  return fromPostgrest<PaymentRow[]>(Promise.resolve(res) as never);
+  const all: PaymentRow[] = [];
+  let cursor: { createdAt: string; id: string } | null = null;
+  for (;;) {
+    let q = client
+      .from("payments")
+      .select("*")
+      .eq("invoice_id", invoiceId)
+      .eq("business_id", businessId);
+    if (cursor) {
+      q = q.or(
+        `and(created_at.eq.${cursor.createdAt},id.gt.${cursor.id}),created_at.gt.${cursor.createdAt}`,
+      );
+    }
+    const res = (await q
+      .order("created_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(PAYMENT_PAGE_SIZE)) as RowEnvelope;
+    const page = await fromPostgrest<PaymentRow[]>(Promise.resolve(res) as never);
+    if (!page.ok) return page;
+    all.push(...page.data);
+    if (page.data.length < PAYMENT_PAGE_SIZE) return { ok: true, data: all };
+    const last = page.data[page.data.length - 1]!;
+    cursor = { createdAt: last.created_at, id: last.id };
+  }
 }
 
 /**
  * List outstanding invoices for a business (PAY-04): issued documents where
- * payment_status is not 'paid', sorted by issued_at ASC (oldest first = most
- * overdue). Balance = total_amount - paid_amount (trigger-maintained).
- * V1 retrieval is bounded at 1000 rows per business-scoped request, matching
- * the DB API max_rows cap; no pagination.
+ * payment_status is not 'paid', sorted by (issued_at, id) ASC — oldest first.
+ * Deterministically complete via keyset pagination with null-date handling
+ * (Postgres ASC sorts NULLS LAST); any page failure fails the whole call.
  */
+const INVOICE_PAGE_SIZE = 500;
+
 export async function listOutstandingInvoices(
   client: SupabaseClient,
   businessId: string,
 ): Promise<Result<InvoiceRow[]>> {
-  const res = (await client
-    .from("invoices")
-    .select("*")
-    .eq("business_id", businessId)
-    .eq("status", "issued")
-    .neq("payment_status", "paid")
-    .order("issued_at", { ascending: true }).limit(1000)) as RowEnvelope;
-  return fromPostgrest<InvoiceRow[]>(Promise.resolve(res) as never);
+  const all: InvoiceRow[] = [];
+  let cursor: { issuedAt: string | null; id: string } | null = null;
+  for (;;) {
+    let q = client
+      .from("invoices")
+      .select("*")
+      .eq("business_id", businessId)
+      .eq("status", "issued")
+      .neq("payment_status", "paid");
+    if (cursor) {
+      q = q.or(
+        cursor.issuedAt === null
+          ? `and(issued_at.is.null,id.gt.${cursor.id})`
+          : `and(issued_at.eq.${cursor.issuedAt},id.gt.${cursor.id}),issued_at.gt.${cursor.issuedAt},issued_at.is.null`,
+      );
+    }
+    const res = (await q
+      .order("issued_at", { ascending: true })
+      .order("id", { ascending: true })
+      .limit(INVOICE_PAGE_SIZE)) as RowEnvelope;
+    const page = await fromPostgrest<InvoiceRow[]>(Promise.resolve(res) as never);
+    if (!page.ok) return page;
+    all.push(...page.data);
+    if (page.data.length < INVOICE_PAGE_SIZE) return { ok: true, data: all };
+    const last = page.data[page.data.length - 1]!;
+    cursor = { issuedAt: last.issued_at, id: last.id };
+  }
 }

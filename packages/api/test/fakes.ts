@@ -16,6 +16,8 @@ export interface CapturedCall {
   select?: string;
   selectOpts?: unknown;
   order?: { col: string; ascending: boolean };
+  orders?: Array<{ col: string; ascending: boolean }>;
+  limit?: number;
   single?: boolean;
   maybeSingle?: boolean;
   rpcName?: string;
@@ -62,6 +64,7 @@ export function makeClient(): FakeClientHandle {
     delete(): Builder;
     eq(col: string, val: unknown): Builder;
     neq(col: string, val: unknown): Builder;
+    or(expr: string): Builder;
     order(col: string, opts?: { ascending?: boolean }): Builder;
     limit(n: number): Builder;
     single(): Builder;
@@ -99,15 +102,22 @@ export function makeClient(): FakeClientHandle {
         call.filters.push({ col, op: "eq", val });
         return builder(call);
       },
-      neq(col: string, val: unknown) {
-        call.filters.push({ col, op: "neq", val });
-        return builder(call);
-      },
+    neq(col: string, val: unknown) {
+      call.filters.push({ col, op: "neq", val });
+      return builder(call);
+    },
+    or(expr: string) {
+      call.filters.push({ col: "__or", op: "or", val: expr });
+      return builder(call);
+    },
       order(col: string, opts?: { ascending?: boolean }) {
-        call.order = { col, ascending: opts?.ascending ?? true };
+        const order = { col, ascending: opts?.ascending ?? true };
+        call.order ??= order;
+        (call.orders ??= []).push(order);
         return builder(call);
       },
-      limit(_n: number) {
+      limit(n: number) {
+        call.limit = n;
         return builder(call);
       },
       single() {
