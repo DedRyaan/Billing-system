@@ -263,7 +263,7 @@ describe("InvoiceDetail", () => {
             amount: 1000,
             method: "cash",
             note: "First advance",
-            recorded_by: "user-1",
+            recorded_by: "aaaaaaaa-1111-2222-3333-444455556666",
             operation_id: "op-1",
             created_at: "2026-08-01T10:00:00Z",
           },
@@ -288,6 +288,8 @@ describe("InvoiceDetail", () => {
     await waitFor(() => expect(screen.getByText("First advance")).toBeInTheDocument());
     expect(screen.getByRole("columnheader", { name: /date/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /method/i })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Recorded by" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "55556666" })).toBeInTheDocument();
     expect(screen.queryByText("No payments recorded yet.")).not.toBeInTheDocument();
     // Voided invoices keep their recorded history, but never offer the
     // Record Payment action again.

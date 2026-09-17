@@ -247,6 +247,7 @@ export function InvoiceDetail({
                       <th className="px-sm py-xs text-right font-medium">Amount</th>
                       <th className="px-sm py-xs text-left font-medium">Method</th>
                       <th className="px-sm py-xs text-left font-medium">Note</th>
+                      <th className="px-sm py-xs text-left font-medium">Recorded by</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -263,6 +264,9 @@ export function InvoiceDetail({
                         </td>
                         <td className="px-sm py-xs text-caption text-ink-secondary">
                           {p.note ?? "—"}
+                        </td>
+                        <td className="px-sm py-xs text-caption text-ink-secondary">
+                          {p.recorded_by?.slice(-8) || "—"}
                         </td>
                       </tr>
                     ))}
