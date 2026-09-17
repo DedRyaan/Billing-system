@@ -381,7 +381,7 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
     <>
       <HeaderRow title="New Bill" />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-lg py-lg">
-        <div className="mx-auto flex w-full max-w-3xl flex-col gap-md">
+        <div className="mx-auto flex w-full max-w-[48rem] flex-col gap-md">
           {/* Customer picker */}
           <div>
             <label htmlFor="customer-picker" className="mb-xs block text-caption text-ink-secondary">
