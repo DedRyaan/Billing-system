@@ -54,10 +54,21 @@ export interface FinalizeDeps {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// WR-07 (same class as bootstrap-status / auth-sign-in): Supabase does not
+// inject CORS platform-side. supabase-js functions.invoke() from the Tauri
+// webview (http://tauri.localhost) or browser dev sends authorization/apikey/
+// content-type headers, which forces a preflight — without these headers the
+// call never leaves the preflight stage.
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { ...CORS_HEADERS, "content-type": "application/json" },
   });
 }
 
@@ -165,6 +176,9 @@ export async function handleFinalizeInvoice(
   deps: FinalizeDeps = {},
 ): Promise<Response> {
   // ── Method guard ───────────────────────────────────────────────────────
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== "POST") {
     return json({ error: { code: "method_not_allowed" } }, 405);
   }
@@ -265,6 +279,7 @@ export async function handleFinalizeInvoice(
       .from("customers")
       .select("state")
       .eq("id", invoice.customer_id)
+      .eq("business_id", businessId)
       .single();
     if (customerRes.data) {
       customer = customerRes.data;
@@ -323,8 +338,11 @@ export async function handleFinalizeInvoice(
   }
 
   // ── Build line details for Postgres function ───────────────────────────
+  // Key each detail by the line's STORED position — positions are not
+  // guaranteed to be 1..N (default 0, gaps after deletes), and the SQL freeze
+  // matches rows by position.
   const lineDetails = totals.lines.map((line, idx) => ({
-    position: idx + 1,
+    position: lines[idx]!.position,
     taxable: paiseToRupees(line.taxablePaise),
     cgst: paiseToRupees(line.cgstPaise),
     sgst: paiseToRupees(line.sgstOrUtgstPaise),

@@ -232,13 +232,13 @@ describe("handleVoidInvoice", () => {
     expect(await res.json()).toMatchObject({ error: { code: "already_voided" } });
   });
 
-  it("returns 403 for inactive caller (P22023)", async () => {
+  it("returns 403 for inactive caller (22023)", async () => {
     const service = createMockService({
       rpcResult: {
         data: null,
         error: {
           message: "caller not found or inactive",
-          code: "P22023",
+          code: "22023",
           details: "",
           hint: "",
         },
@@ -410,5 +410,21 @@ describe("handleVoidInvoice", () => {
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body).toMatchObject({ error: { code: "network" } });
+  });
+});
+
+describe("void-invoice CORS", () => {
+  it("answers preflight with CORS headers and no service call", async () => {
+    const res = await handleVoidInvoice(
+      new Request("http://localhost/void-invoice", { method: "OPTIONS" }),
+      { env: {}, createServiceClient: () => { throw new Error("unexpected service call"); } } as VoidDeps,
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
+  it("includes CORS headers on error responses", async () => {
+    const res = await handleVoidInvoice(postNoAuth(), { env: {} } as VoidDeps);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
   });
 });

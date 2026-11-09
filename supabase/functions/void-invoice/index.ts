@@ -59,10 +59,21 @@ export interface VoidDeps {
 // Helpers
 // ---------------------------------------------------------------------------
 
+// WR-07 (same class as bootstrap-status / auth-sign-in): Supabase does not
+// inject CORS platform-side. supabase-js functions.invoke() from the Tauri
+// webview (http://tauri.localhost) or browser dev sends authorization/apikey/
+// content-type headers, which forces a preflight — without these headers the
+// call never leaves the preflight stage.
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { ...CORS_HEADERS, "content-type": "application/json" },
   });
 }
 
@@ -82,6 +93,9 @@ export async function handleVoidInvoice(
   req: Request,
   deps: VoidDeps = {},
 ): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== "POST") {
     return json({ error: { code: "method_not_allowed" } }, 405);
   }
@@ -172,8 +186,8 @@ export async function handleVoidInvoice(
         return json({ error: { code: "already_voided" } }, 409);
       }
 
-      // P22023 = invalid_parameter_value (caller not found or inactive)
-      if (pgCode === "P22023") {
+      // 22023 = invalid_parameter_value (caller not found or inactive)
+      if (pgCode === "22023") {
         return json({ error: { code: "caller_not_found_or_inactive" } }, 403);
       }
 

@@ -597,3 +597,41 @@ describe("handleFinalizeInvoice", () => {
     expect(params.p_tax).toBeCloseTo(212.4); // 180 + 32.4
   });
 });
+
+describe("finalize-invoice audit fixes", () => {
+  it("answers CORS preflight without touching the service client", async () => {
+    const res = await handleFinalizeInvoice(
+      new Request("http://localhost/finalize-invoice", { method: "OPTIONS" }),
+      { env: {}, createServiceClient: () => { throw new Error("unexpected service call"); } },
+    );
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-headers")).toContain("authorization");
+  });
+
+  it("includes CORS headers on error responses", async () => {
+    const res = await handleFinalizeInvoice(post({}), { env: {} });
+    expect(res.status).toBe(500);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+
+  it("keys line details by the stored line position, not array index", async () => {
+    const client = createMockClient({
+      user: { id: USER_ID },
+      tables: baseTables({
+        invoice_lines: [
+          { ...LINE_1, position: 0 },
+          { ...LINE_2, position: 7 },
+        ],
+      }),
+      rpcResults: { finalize_invoice_fn: { data: SUCCESSFUL_RPC_RESULT, error: null } },
+    });
+    const res = await handleFinalizeInvoice(
+      postWithAuth({ invoice_id: INVOICE_ID, business_id: BUSINESS_ID }),
+      { env: ENV, createServiceClient: () => client as never },
+    );
+    expect(res.status).toBe(200);
+    const params = client.rpc.mock.calls[0]![1] as { p_line_details: Array<{ position: number }> };
+    expect(params.p_line_details.map((d) => d.position)).toEqual([0, 7]);
+  });
+});
