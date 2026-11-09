@@ -135,6 +135,9 @@ function mapRpcError(error: {
     if (msg.includes("line freeze failed")) {
       return { status: 500, body: { error: { code: "line_freeze_failed", message: msg } } };
     }
+    if (msg.includes("not found in business")) {
+      return { status: 422, body: { error: { code: "foreign_reference", message: msg } } };
+    }
     if (msg.includes("negative amounts")) {
       return { status: 422, body: { error: { code: "negative_amounts" } } };
     }
