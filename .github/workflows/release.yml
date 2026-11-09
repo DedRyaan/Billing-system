@@ -1,0 +1,95 @@
+# Builds the Windows installer and publishes it as a GitHub Release.
+#
+# Trigger: push a tag like v0.1.0 (or run manually from the Actions tab).
+# Output: Billing_<version>_x64-setup.exe attached to the release — a
+# per-user NSIS installer (no admin prompt) that bundles the WebView2
+# bootstrapper, so end users just download, run, and sign in.
+#
+# The Supabase URL + anon key are baked into the frontend at build time
+# (VITE_* vars). The anon key is public by design (RLS is the boundary);
+# the service-role key is never used here.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Publish a GitHub Release (false = compile-only check, installer kept as a workflow artifact)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: apps/desktop/src-tauri -> target
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Check build-time config is present
+        if: github.event_name == 'push' || inputs.publish
+        shell: bash
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          [ -n "$VITE_SUPABASE_URL" ] || { echo "::error::Repository secret VITE_SUPABASE_URL is not set"; exit 1; }
+          [ -n "$VITE_SUPABASE_ANON_KEY" ] || { echo "::error::Repository secret VITE_SUPABASE_ANON_KEY is not set"; exit 1; }
+
+      - name: Build installer and publish release
+        if: github.event_name == 'push' || inputs.publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_GSTIN_LOOKUP_URL: ${{ secrets.VITE_GSTIN_LOOKUP_URL }}
+          VITE_GSTIN_LOOKUP_API_KEY: ${{ secrets.VITE_GSTIN_LOOKUP_API_KEY }}
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+          tagName: v__VERSION__
+          releaseName: Billing v__VERSION__
+          releaseBody: |
+            ## Install
+            1. Download the file ending in **_x64-setup.exe** from the Assets below.
+            2. Run it. It installs for your Windows user only — no administrator password needed.
+            3. Open **Billing** from the Start menu and sign in with the email and password your admin gave you.
+
+            Windows may show "Windows protected your PC" because the installer is not code-signed yet: click **More info → Run anyway**.
+          releaseDraft: false
+          prerelease: false
+
+      - name: Compile-only build (no release)
+        if: github.event_name == 'workflow_dispatch' && !inputs.publish
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: apps/desktop
+          tauriScript: pnpm tauri
+
+      - name: Keep the compile-only installer as an artifact
+        if: github.event_name == 'workflow_dispatch' && !inputs.publish
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-check
+          path: apps/desktop/src-tauri/target/release/bundle/nsis/*.exe
