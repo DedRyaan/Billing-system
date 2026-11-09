@@ -16,13 +16,13 @@ import * as Dialog from "@radix-ui/react-dialog";
 import { recordPayment } from "@billing/api/payments";
 import { keysFor } from "@billing/api/query-keys";
 import { useQueryClient } from "@tanstack/react-query";
-import { serializePaise } from "@billing/gst";
 import { Button } from "../../components/ui/Button";
 import { MoneyInput } from "../../components/ui/MoneyInput";
 import { RadioCardGroup, type RadioCardOption } from "../../components/ui/RadioCardGroup";
 import { TextArea } from "../../components/ui/TextArea";
 import { useAuth } from "../../auth/AuthProvider";
 import { showToast, showMutationFailure } from "../../shell/toast-store";
+import { formatRupees } from "../../lib/format";
 
 const PAYMENT_METHODS: readonly RadioCardOption[] = [
   { value: "cash", title: "Cash", consequence: "Physical cash received" },
@@ -31,10 +31,7 @@ const PAYMENT_METHODS: readonly RadioCardOption[] = [
   { value: "other", title: "Other", consequence: "Cheque, demand draft, etc." },
 ] as const;
 
-function fmtPaise(amount: number): string {
-  const paise = BigInt(Math.round(amount * 100));
-  return `₹${serializePaise(paise)}`;
-}
+const fmtPaise = formatRupees;
 
 export interface RecordPaymentDialogProps {
   open: boolean;

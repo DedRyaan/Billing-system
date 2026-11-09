@@ -80,6 +80,18 @@ function lineFromCatalogItem(item: CatalogItemRow): LineItemDraft {
   };
 }
 
+/** A line the user has not touched since it was created. */
+function isBlankLine(l: LineItemDraft): boolean {
+  return (
+    l.catalog_item_id == null &&
+    l.description.trim() === "" &&
+    (l.hsn_sac ?? "") === "" &&
+    l.unit_price === 0 &&
+    l.discount_pct === 0 &&
+    l.quantity === 1
+  );
+}
+
 type ScreenView =
   | { kind: "draft" }
   | { kind: "detail"; invoice: InvoiceRow; lines: InvoiceLineRow[] };
@@ -99,6 +111,9 @@ function RouterDeepLinkHost() {
   const router = useRouter();
   return (
     <BillEntryContent
+      // Remount when the deep-link target changes (e.g. sidebar "Bills" from
+      // an opened bill) so a stale detail view never lingers.
+      key={invoiceId ?? "new"}
       targetInvoiceId={invoiceId}
       onShowHistory={() => void router.navigate({ to: "/bills/history" })}
     />
@@ -218,10 +233,24 @@ function BillEntryContent({ targetInvoiceId, onShowHistory }: BillEntryContentPr
   // --- Line operations ---
   const addLineFromCatalog = useCallback(
     (item: CatalogItemRow) => {
-      setLines((prev) => [...prev, lineFromCatalogItem(item)]);
+      setLines((prev) => {
+        // An untouched blank line (the starter row) is replaced rather than
+        // left dangling above the picked item.
+        const blankIdx = prev.findIndex(isBlankLine);
+        if (blankIdx !== -1) {
+          const next = [...prev];
+          next[blankIdx] = lineFromCatalogItem(item);
+          return next;
+        }
+        return [...prev, lineFromCatalogItem(item)];
+      });
     },
     [],
   );
+
+  const focusCatalogPicker = useCallback(() => {
+    document.getElementById("item-picker")?.focus();
+  }, []);
 
   const addCustomLine = useCallback(() => {
     setLines((prev) => [...prev, createEmptyLine()]);
@@ -500,7 +529,7 @@ function BillEntryContent({ targetInvoiceId, onShowHistory }: BillEntryContentPr
     <>
       <HeaderRow title="New Bill" actions={historyAction} />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-lg py-lg">
-        <div className="mx-auto flex w-full max-w-[48rem] flex-col gap-md">
+        <div className="mx-auto flex w-full max-w-[64rem] flex-col gap-md">
           {/* Customer picker */}
           <div>
             <label htmlFor="customer-picker" className="mb-xs block text-caption text-ink-secondary">
@@ -523,9 +552,7 @@ function BillEntryContent({ targetInvoiceId, onShowHistory }: BillEntryContentPr
               lines={lines}
               onChange={setLines}
               onRemoveLine={removeLine}
-              onAddLine={() => {
-                addCustomLine();
-              }}
+              onAddLine={focusCatalogPicker}
               onAddCustomLine={addCustomLine}
               totals={draftResult?.totals ?? null}
               disabled={finalizing}

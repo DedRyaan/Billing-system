@@ -39,6 +39,7 @@ import {
   ARCHIVED_CHIP_SUFFIX,
   COL_BUSINESSES,
   COL_PERSON,
+  COL_EMAIL,
   COL_ROLE,
   COL_STATUS,
   DEACTIVATE_BUTTON,
@@ -137,7 +138,7 @@ export function TeamSection({ client }: TeamSectionProps) {
 
   const columns: ReadonlyArray<DataTableColumn<RosterVM>> = [
     { key: "full_name", label: COL_PERSON, sortable: true, truncate: true },
-    { key: "email", label: COL_PERSON },
+    { key: "email", label: COL_EMAIL },
     { key: "role_label", label: COL_ROLE },
     { key: "assignments_label", label: COL_BUSINESSES },
     { key: "status_label", label: COL_STATUS },

@@ -10,17 +10,15 @@ import { useNavigate } from "@tanstack/react-router";
 import { IndianRupee } from "lucide-react";
 import { listOutstandingInvoices } from "@billing/api/payments";
 import { keysFor } from "@billing/api/query-keys";
-import { serializePaise } from "@billing/gst";
 import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { useAuth } from "../../auth/AuthProvider";
 import { useActiveBusiness } from "../../business/ActiveBusinessProvider";
 import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
+import { HeaderRow } from "../../shell/HeaderRow";
+import { formatRupees } from "../../lib/format";
 
-function fmtPaise(amount: number): string {
-  const paise = BigInt(Math.round(amount * 100));
-  return `₹${serializePaise(paise)}`;
-}
+const fmtPaise = formatRupees;
 
 function paymentStatusBadge(status: string) {
   switch (status) {
@@ -35,7 +33,21 @@ function paymentStatusBadge(status: string) {
   }
 }
 
+// Route frame: page header + padded, centred column like every other screen.
 export function OutstandingsSection() {
+  return (
+    <>
+      <HeaderRow title="Outstandings" />
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-lg py-lg">
+        <div className="mx-auto flex w-full max-w-[48rem] flex-col gap-md">
+          <OutstandingsBody />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function OutstandingsBody() {
   const auth = useAuth();
   const biz = useActiveBusiness();
   const businessId = biz.activeBusinessId;
@@ -63,7 +75,6 @@ export function OutstandingsSection() {
   if (query.isPending) {
     return (
       <div className="flex flex-col gap-xs">
-        <h2 className="text-caption text-ink-secondary">Outstanding Dues</h2>
         <p className="text-caption text-ink-secondary">Loading outstanding dues…</p>
       </div>
     );
@@ -71,7 +82,6 @@ export function OutstandingsSection() {
   if (query.isError) {
     return (
       <div className="flex flex-col gap-xs">
-        <h2 className="text-caption text-ink-secondary">Outstanding Dues</h2>
         <div className="rounded-md border border-hairline bg-surface px-md py-sm">
           <p className="text-caption text-ink-secondary">
             Couldn’t load outstanding dues.
@@ -100,7 +110,6 @@ export function OutstandingsSection() {
 
   return (
     <div className="flex flex-col gap-xs">
-      <h2 className="text-caption text-ink-secondary">Outstanding Dues</h2>
       <div className="flex flex-col gap-xs">
         {invoices.map((inv) => {
           const balance = Number(inv.total_amount) - Number(inv.paid_amount);
@@ -121,7 +130,7 @@ export function OutstandingsSection() {
                   #{inv.seq ?? "\u2014"}
                 </span>
                 <span className="text-caption text-ink-secondary">
-                  {inv.customer_name ?? "No customer"}
+                  {inv.customer_name ?? "Walk-in customer"}
                 </span>
                 <span className="text-caption text-ink-secondary">
                   Issued: {inv.issued_at ? new Date(inv.issued_at).toLocaleDateString("en-IN") : "—"}
@@ -136,7 +145,7 @@ export function OutstandingsSection() {
                     Total: {fmtPaise(Number(inv.total_amount))} · Paid: {fmtPaise(Number(inv.paid_amount))}
                   </span>
                   <span className="text-caption text-ink-secondary">
-                    {ageDays}d overdue
+                    {ageDays === 1 ? "1 day" : `${ageDays} days`} since issue
                   </span>
                 </div>
                 {paymentStatusBadge(inv.payment_status)}

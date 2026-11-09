@@ -5,6 +5,7 @@ export const TEAM_SECTION_TITLE = "Team";
 export const TEAM_SEARCH_PLACEHOLDER = "Search name or email";
 
 export const COL_PERSON = "Person";
+export const COL_EMAIL = "Email";
 export const COL_ROLE = "Role";
 export const ROLE_BADGE_ADMIN = "Admin";
 export const ROLE_BADGE_STAFF = "Staff";

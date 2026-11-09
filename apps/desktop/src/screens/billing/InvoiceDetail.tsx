@@ -6,7 +6,6 @@
 // Issued invoices are fully immutable (INV-05). Voided invoices show the
 // void reason and consumed number permanently.
 import { useQuery } from "@tanstack/react-query";
-import { serializePaise } from "@billing/gst";
 import type { InvoiceRow, InvoiceLineRow } from "@billing/api/invoices";
 import { listPaymentsByInvoice, type PaymentRow } from "@billing/api/payments";
 import { keysFor } from "@billing/api/query-keys";
@@ -14,6 +13,7 @@ import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../auth/AuthProvider";
 import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
+import { formatRupees } from "../../lib/format";
 
 export interface InvoiceDetailProps {
   invoice: InvoiceRow;
@@ -26,9 +26,26 @@ export interface InvoiceDetailProps {
   onBack?: () => void;
 }
 
-function fmtPaise(amount: number): string {
-  const paise = BigInt(Math.round(amount * 100));
-  return `₹${serializePaise(paise)}`;
+const fmtPaise = formatRupees;
+
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cash: "Cash",
+  upi: "UPI",
+  bank_transfer: "Bank transfer",
+  other: "Other",
+};
+
+/** Frozen buyer address JSON ({lines, city, pincode, ...}) -> one readable line. */
+function formatAddress(address: Record<string, unknown> | null): string | null {
+  if (address === null) return null;
+  const lines = Array.isArray(address["lines"])
+    ? (address["lines"] as unknown[]).filter((l): l is string => typeof l === "string" && l.trim() !== "")
+    : [];
+  const city = typeof address["city"] === "string" ? address["city"] : "";
+  const pincode = typeof address["pincode"] === "string" ? address["pincode"] : "";
+  const tail = [city, pincode].filter((p) => p !== "").join(" ");
+  const parts = [...lines, ...(tail !== "" ? [tail] : [])];
+  return parts.length > 0 ? parts.join(", ") : null;
 }
 
 function statusBadge(status: InvoiceRow["status"]) {
@@ -67,6 +84,7 @@ export function InvoiceDetail({
   // Live sync: payments recorded on another device refresh the history.
   useBusinessRealtime(auth.client, "payments", invoice.business_id);
   const sortedLines = [...lines].sort((a, b) => a.position - b.position);
+  const buyerAddress = formatAddress(invoice.customer_address);
 
   const totalCgst = lines.reduce((s, l) => s + Number(l.cgst_amount), 0);
   const totalSgst = lines.reduce((s, l) => s + Number(l.sgst_amount), 0);
@@ -88,7 +106,7 @@ export function InvoiceDetail({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-lg py-lg">
-      <div className="mx-auto flex w-full max-w-[48rem] flex-col gap-md">
+      <div className="mx-auto flex w-full max-w-[64rem] flex-col gap-md">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-sm">
@@ -110,17 +128,15 @@ export function InvoiceDetail({
         {/* Buyer section */}
         <div className="rounded-md border border-hairline bg-surface px-md py-sm">
           <h2 className="mb-xs text-caption font-semibold text-ink-secondary">Buyer</h2>
-          <p className="text-body font-medium text-ink">{invoice.customer_name ?? "No customer"}</p>
+          <p className="text-body font-medium text-ink">{invoice.customer_name ?? "Walk-in customer"}</p>
           {invoice.customer_gstin && (
             <p className="text-caption text-ink-secondary">GSTIN: {invoice.customer_gstin}</p>
           )}
           {!invoice.customer_gstin && (
             <p className="text-caption text-ink-secondary">Unregistered</p>
           )}
-          {invoice.customer_address && (
-            <p className="text-caption text-ink-secondary">
-              {JSON.stringify(invoice.customer_address)}
-            </p>
+          {buyerAddress !== null && (
+            <p className="text-caption text-ink-secondary">{buyerAddress}</p>
           )}
         </div>
 
@@ -128,9 +144,9 @@ export function InvoiceDetail({
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-body">
             <thead>
-              <tr className="border-b border-hairline text-caption text-ink-secondary">
+              <tr className="whitespace-nowrap border-b border-hairline text-caption text-ink-secondary">
                 <th className="w-8 px-sm py-xs text-center font-medium">#</th>
-                <th className="px-sm py-xs text-left font-medium">Description</th>
+                <th className="min-w-[14rem] px-sm py-xs text-left font-medium">Description</th>
                 <th className="w-24 px-sm py-xs text-left font-medium">HSN/SAC</th>
                 <th className="w-20 px-sm py-xs text-right font-medium">Qty</th>
                 <th className="w-28 px-sm py-xs text-right font-medium">Price</th>
@@ -260,7 +276,7 @@ export function InvoiceDetail({
               <div className="overflow-x-auto">
                 <table className="w-full border-collapse text-body">
                   <thead>
-                    <tr className="border-b border-hairline text-caption text-ink-secondary">
+                    <tr className="whitespace-nowrap border-b border-hairline text-caption text-ink-secondary">
                       <th className="px-sm py-xs text-left font-medium">Date</th>
                       <th className="px-sm py-xs text-right font-medium">Amount</th>
                       <th className="px-sm py-xs text-left font-medium">Method</th>
@@ -277,14 +293,18 @@ export function InvoiceDetail({
                         <td className="px-sm py-xs text-right text-caption">
                           {fmtPaise(Number(p.amount))}
                         </td>
-                        <td className="px-sm py-xs text-caption capitalize">
-                          {p.method?.replace("_", " ") ?? "—"}
+                        <td className="px-sm py-xs text-caption">
+                          {p.method !== null ? (PAYMENT_METHOD_LABELS[p.method] ?? p.method) : "—"}
                         </td>
                         <td className="px-sm py-xs text-caption text-ink-secondary">
                           {p.note ?? "—"}
                         </td>
                         <td className="px-sm py-xs text-caption text-ink-secondary">
-                          {p.recorded_by?.slice(-8) || "—"}
+                          {p.recorded_by === null
+                            ? "—"
+                            : p.recorded_by === auth.profile?.id
+                              ? "You"
+                              : "Team member"}
                         </td>
                       </tr>
                     ))}

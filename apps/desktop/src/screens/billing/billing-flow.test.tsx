@@ -345,7 +345,7 @@ describe("InvoiceDetail", () => {
     expect(screen.getByRole("columnheader", { name: /date/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: /method/i })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "Recorded by" })).toBeInTheDocument();
-    expect(screen.getByRole("cell", { name: "55556666" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "Team member" })).toBeInTheDocument();
     expect(screen.queryByText("No payments recorded yet.")).not.toBeInTheDocument();
     // Voided invoices keep their recorded history, but never offer the
     // Record Payment action again.

@@ -83,7 +83,7 @@ describe("BillHistoryScreen", () => {
     await waitFor(() => expect(screen.getByText("#12")).toBeInTheDocument());
     expect(screen.getByText("Ravi Kumar")).toBeInTheDocument();
     expect(screen.getByText("Walk-in customer")).toBeInTheDocument();
-    expect(screen.getByText("Due ₹1000.00")).toBeInTheDocument();
+    expect(screen.getByText("Due ₹1,000.00")).toBeInTheDocument();
     const list = within(screen.getByRole("list", { name: "Bills" }));
     expect(list.getByText("Partial")).toBeInTheDocument();
     expect(list.getByText("Paid")).toBeInTheDocument();

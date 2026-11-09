@@ -17,7 +17,6 @@ import {
   type InvoiceRow,
 } from "@billing/api/invoices";
 import { keysFor } from "@billing/api/query-keys";
-import { serializePaise } from "@billing/gst";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { EmptyState, ErrorState } from "../../components/ui/EmptyState";
@@ -27,6 +26,7 @@ import { HeaderRow } from "../../shell/HeaderRow";
 import { useAuth } from "../../auth/AuthProvider";
 import { useActiveBusiness } from "../../business/ActiveBusinessProvider";
 import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
+import { formatRupees } from "../../lib/format";
 
 const STATUS_OPTIONS = [
   { value: "all", label: "All bills" },
@@ -36,9 +36,7 @@ const STATUS_OPTIONS = [
 
 const SEARCH_DEBOUNCE_MS = 250;
 
-function fmtRupees(amount: number): string {
-  return `₹${serializePaise(BigInt(Math.round(Number(amount) * 100)))}`;
-}
+const fmtRupees = formatRupees;
 
 function statusBadge(inv: InvoiceRow) {
   if (inv.status === "voided") return <Badge tone="danger">Voided</Badge>;

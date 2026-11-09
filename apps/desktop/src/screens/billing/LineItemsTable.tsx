@@ -9,9 +9,10 @@ import { Input } from "../../components/ui/Input";
 import { MoneyInput } from "../../components/ui/MoneyInput";
 import { Select, type SelectOption } from "../../components/ui/Select";
 import { Button } from "../../components/ui/Button";
-import { CURRENT_SLABS_BPS, bpsToPercentString, serializePaise } from "@billing/gst";
+import { CURRENT_SLABS_BPS, bpsToPercentString } from "@billing/gst";
 import type { InvoiceTotals } from "@billing/gst";
 import type { LineItemDraft } from "./billing-schema";
+import { formatPaise } from "../../lib/format";
 
 export interface LineItemsTableProps {
   lines: LineItemDraft[];
@@ -55,15 +56,15 @@ export function LineItemsTable({
     <div className="overflow-x-auto">
       <table className="w-full border-collapse text-body">
         <thead>
-          <tr className="border-b border-hairline text-caption text-ink-secondary">
+          <tr className="whitespace-nowrap border-b border-hairline text-caption text-ink-secondary">
             <th className="w-8 px-sm py-xs text-center font-medium">#</th>
-            <th className="min-w-[160px] px-sm py-xs text-left font-medium">Description</th>
-            <th className="w-24 px-sm py-xs text-left font-medium">HSN/SAC</th>
+            <th className="min-w-[14rem] px-sm py-xs text-left font-medium">Description</th>
+            <th className="w-[6.5rem] px-sm py-xs text-left font-medium">HSN/SAC</th>
             <th className="w-20 px-sm py-xs text-right font-medium">Qty</th>
             <th className="w-28 px-sm py-xs text-right font-medium">Price (₹)</th>
             <th className="w-20 px-sm py-xs text-right font-medium">Disc %</th>
             <th className="w-24 px-sm py-xs text-left font-medium">GST Rate</th>
-            <th className="w-28 px-sm py-xs text-right font-medium">Total (₹)</th>
+            <th className="w-28 whitespace-nowrap px-sm py-xs text-right font-medium">Total (₹)</th>
             <th className="w-10 px-sm py-xs" />
           </tr>
         </thead>
@@ -134,9 +135,9 @@ export function LineItemsTable({
                     disabled={disabled}
                   />
                 </td>
-                <td className="px-sm py-xs text-right text-caption text-ink-secondary">
+                <td className="whitespace-nowrap px-sm py-xs text-right text-caption text-ink-secondary">
                   {lt !== undefined
-                    ? `₹${serializePaise(lt.totalPaise)}`
+                    ? formatPaise(lt.totalPaise)
                     : "—"}
                 </td>
                 <td className="px-sm py-xs">

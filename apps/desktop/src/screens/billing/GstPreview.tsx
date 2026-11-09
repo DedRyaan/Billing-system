@@ -5,17 +5,15 @@
 // consistent integer→decimal display. Round-off line always shown when
 // non-zero (INV-08). Supply type shown as Badge.
 import { Badge } from "../../components/ui/Badge";
-import { serializePaise } from "@billing/gst";
 import type { InvoiceTotals, SupplyType } from "@billing/gst";
+import { formatPaise } from "../../lib/format";
 
 export interface GstPreviewProps {
   totals: InvoiceTotals | null;
   supplyType: SupplyType | null;
 }
 
-function fmtPaise(paise: bigint): string {
-  return `₹${serializePaise(paise)}`;
-}
+const fmtPaise = formatPaise;
 
 export function GstPreview({ totals, supplyType }: GstPreviewProps) {
   if (totals === null) {

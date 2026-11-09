@@ -80,7 +80,7 @@ describe("OutstandingsSection rows", () => {
 
     await waitFor(() => expect(screen.getByText(/Acme Corp/)).toBeInTheDocument());
     expect(screen.getByText(/Issued: 1\/8\/2026/)).toBeInTheDocument();
-    expect(screen.getByText(/Total: ₹1180\.00/)).toBeInTheDocument();
+    expect(screen.getByText(/Total: ₹1,180\.00/)).toBeInTheDocument();
     expect(screen.getByText(/Paid: ₹500\.00/)).toBeInTheDocument();
     expect(screen.getByText(/₹680\.00/)).toBeInTheDocument();
     expect(screen.getByText(/Partial/)).toBeInTheDocument();

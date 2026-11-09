@@ -6,9 +6,10 @@
 // the line's description, price, HSN/SAC, rate, unit.
 // Does NOT allow inline item creation — items are managed in Catalog.
 import { useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { parseDecimalToPaise, serializePaise } from "@billing/gst";
+import { parseDecimalToPaise } from "@billing/gst";
 import type { CatalogItemRow } from "@billing/api/catalog-items";
 import { CONTROL_CLASSES } from "../../components/ui/Input";
+import { formatPaise } from "../../lib/format";
 
 export interface ItemPickerProps {
   items: CatalogItemRow[];
@@ -22,16 +23,7 @@ export interface ItemPickerProps {
 function formatPrice(numeric: string): string {
   const parsed = parseDecimalToPaise(numeric);
   if (!parsed.ok) return `₹${numeric}`;
-  const s = serializePaise(parsed.paise);
-  const neg = s.startsWith("-");
-  const body = neg ? s.slice(1) : s;
-  const dotIdx = body.indexOf(".");
-  const intPart = dotIdx >= 0 ? body.slice(0, dotIdx) : body;
-  const fracPart = dotIdx >= 0 ? body.slice(dotIdx) : "";
-  const grouped = intPart.length <= 3
-    ? intPart
-    : intPart.slice(0, -3).replace(/\B(?=(\d{2})+(?!\d))/g, ",") + "," + intPart.slice(-3);
-  return `${neg ? "-" : ""}₹${grouped}${fracPart}`;
+  return formatPaise(parsed.paise);
 }
 
 export function ItemPicker({

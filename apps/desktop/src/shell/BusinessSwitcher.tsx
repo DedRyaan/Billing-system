@@ -74,7 +74,10 @@ export function BusinessSwitcher({
             height={20}
             className="shrink-0 rounded-sm"
           />
-          <span className="min-w-0 flex-1 truncate text-body text-ink">
+          <span
+            className="min-w-0 flex-1 truncate text-body text-ink"
+            title={active?.legal_name ?? undefined}
+          >
             {active?.legal_name ?? SWITCHER_SELECT_PLACEHOLDER}
           </span>
           <ChevronsUpDown size={14} aria-hidden="true" className="shrink-0 text-ink-secondary" />
@@ -133,7 +136,7 @@ export function BusinessSwitcher({
                       {isActive && <Check size={16} className="text-accent" />}
                     </span>
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-body text-ink">{b.legal_name}</span>
+                      <span className="block truncate text-body text-ink" title={b.legal_name}>{b.legal_name}</span>
                       {archived && (
                         <span className="block text-caption text-ink-secondary">
                           {SWITCHER_ARCHIVED_SUFFIX}

@@ -9,12 +9,12 @@ import { useQuery } from "@tanstack/react-query";
 import { FileText } from "lucide-react";
 import { listInvoicesByBusiness, type InvoiceRow } from "@billing/api/invoices";
 import { keysFor } from "@billing/api/query-keys";
-import { serializePaise } from "@billing/gst";
 import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { useAuth } from "../../auth/AuthProvider";
 import { useActiveBusiness } from "../../business/ActiveBusinessProvider";
 import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
+import { formatRupees } from "../../lib/format";
 
 function statusBadgeTone(status: InvoiceRow["status"]): BadgeTone {
   switch (status) {
@@ -27,10 +27,7 @@ function statusBadgeTone(status: InvoiceRow["status"]): BadgeTone {
   }
 }
 
-function formatTotal(amount: number): string {
-  const paise = BigInt(Math.round(amount * 100));
-  return `₹${serializePaise(paise)}`;
-}
+const formatTotal = formatRupees;
 
 export interface InvoiceListSectionProps {
   onSelectDraft?: (invoice: InvoiceRow) => void;
