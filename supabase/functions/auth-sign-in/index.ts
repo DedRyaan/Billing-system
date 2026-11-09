@@ -68,6 +68,16 @@ const LOCKOUT_THRESHOLD = 5;
 const BAN_DURATION = "292000h";
 const MIN_PASSWORD_LENGTH = 8;
 
+// WR-07 (same class as bootstrap-status): Supabase does not inject CORS
+// platform-side. Browser dev (http://localhost:5173) and the Tauri webview
+// both preflight POSTs carrying apikey/content-type — without these headers
+// sign-in can never leave the preflight stage. Canonical allow-list.
+const CORS_HEADERS: Record<string, string> = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 /**
  * THE generic credential-failure body. Referenced by BOTH the unknown-email
  * and wrong-password return sites — byte-identical responses, no enumeration
@@ -108,7 +118,7 @@ interface CallerProfile {
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { "content-type": "application/json" },
+    headers: { ...CORS_HEADERS, "content-type": "application/json" },
   });
 }
 
@@ -167,7 +177,7 @@ async function runSignIn(
     return json({ error: { code: "server_misconfigured" } }, 500);
   }
   const grantFetch = deps.gotrueFetch ?? globalThis.fetch;
-  const grant = await grantFetch(`${env.SUPABASE_URL}/auth/v1/token?grant=password`, {
+  const grant = await grantFetch(`${env.SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: { "content-type": "application/json", apikey: anonKey },
     body: JSON.stringify({ email: cmd.email, password: cmd.password }),
@@ -314,6 +324,9 @@ export async function handleAuthSignIn(
   req: Request,
   deps: AuthSignInDeps = {},
 ): Promise<Response> {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== "POST") {
     return json({ error: { code: "method_not_allowed" } }, 405);
   }

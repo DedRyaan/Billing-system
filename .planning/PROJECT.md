@@ -43,7 +43,7 @@ The owner can run all their businesses' billing entirely from this app daily —
 ### Out of Scope
 
 - E-invoicing / IRN API integration — mandatory only above ₹5Cr turnover; adds third-party GSP dependency. Revisit in v2.
-- Credit/debit notes — v2; corrections handled by editing/reissuing in v1
+- Credit/debit notes — v2; corrections in v1 handled by void-and-reissue (editing issued invoices is not GST-compliant)
 - Recurring invoices — v2
 - Expense tracking — v2; billing is the core loop first
 - Customer-facing portal — future; WhatsApp/PDF covers delivery now

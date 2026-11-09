@@ -43,6 +43,52 @@ function signInRequest(): Request {
   });
 }
 
+describe("auth-sign-in password grant", () => {
+  it("uses grant_type=password and returns the successful session", async () => {
+    const session = { user: { id: "u1" }, access_token: "test-session" };
+    const requests: Request[] = [];
+    const res = await handleAuthSignIn(signInRequest(), {
+      env: { ...HANDLER_ENV, SUPABASE_ANON_KEY: "test-anon-key" },
+      createServiceClient: () => lockedServiceClient({ id: "u1", locked_at: null }),
+      gotrueFetch: async (input, init) => {
+        const request = new Request(input, init);
+        requests.push(request);
+        expect(request.url).toBe("http://localhost/auth/v1/token?grant_type=password");
+        expect(request.method).toBe("POST");
+        expect(request.headers.get("apikey")).toBe("test-anon-key");
+        expect(await request.json()).toEqual({ email: "user@example.com", password: "pw" });
+        return Response.json(session);
+      },
+    });
+    expect(requests).toHaveLength(1);
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual(session);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+});
+
+describe("auth-sign-in browser requests", () => {
+  it("answers preflight without credentials or service calls", async () => {
+    const res = await handleAuthSignIn(new Request("http://localhost/auth-sign-in", {
+      method: "OPTIONS",
+      headers: { origin: "http://localhost:5173", "access-control-request-method": "POST" },
+    }), {
+      env: {},
+      createServiceClient: () => { throw new Error("unexpected service call"); },
+    });
+    expect(res.status).toBe(204);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+    expect(res.headers.get("access-control-allow-methods")).toContain("POST");
+    expect(res.headers.get("access-control-allow-headers")).toContain("apikey");
+  });
+
+  it("includes CORS headers on error responses", async () => {
+    const res = await handleAuthSignIn(signInRequest(), { env: {} });
+    expect(res.status).toBe(500);
+    expect(res.headers.get("access-control-allow-origin")).toBe("*");
+  });
+});
+
 describe("generic credentials copy has exactly ONE source", () => {
   it("Edge Function failure body is byte-equal to the shared constant", async () => {
     const res = await handleAuthSignIn(signInRequest(), {
