@@ -8,6 +8,7 @@ import {
   getInvoice,
   getInvoiceLines,
   listInvoicesByBusiness,
+  replaceDraftLines,
   updateDraftInvoice,
   voidInvoice,
 } from "../src/invoices";
@@ -295,5 +296,76 @@ describe("voidInvoice", () => {
     if (!res.ok) {
       expect(res.error.reason).toBe("PERMISSION_DENIED");
     }
+  });
+});
+
+describe("replaceDraftLines", () => {
+  it("clears existing lines then inserts positions 1..N", async () => {
+    const fake = makeClient();
+    fake.next(null);
+    fake.next(null);
+    const res = await replaceDraftLines(fake.client, "inv-1", [
+      { description: "A", quantity: 2, unit_price_catalog: 100, unit_price_charged: 90, discount_pct: 0, gst_rate: 18, catalog_item_id: "item-1" },
+      { description: "B", hsn_sac: "9983", quantity: 1, unit_price_catalog: null, unit_price_charged: 50, discount_pct: 5, gst_rate: 12, catalog_item_id: null },
+    ]);
+    expect(res.ok).toBe(true);
+    expect(fake.calls[0]!.table).toBe("invoice_lines");
+    expect(fake.calls[0]!.op).toBe("delete");
+    expect(fake.calls[0]!.filters).toEqual([{ col: "invoice_id", op: "eq", val: "inv-1" }]);
+    expect(fake.calls[1]!.op).toBe("insert");
+    const rows = fake.calls[1]!.payload as Array<Record<string, unknown>>;
+    expect(rows.map((r) => r["position"])).toEqual([1, 2]);
+    expect(rows[0]).toMatchObject({ invoice_id: "inv-1", hsn_sac: null, catalog_item_id: "item-1" });
+    expect(rows[1]).toMatchObject({ hsn_sac: "9983", unit_price_catalog: null });
+  });
+
+  it("stops and reports when the delete fails", async () => {
+    const fake = makeClient();
+    fake.next(null, { code: "42501", message: "denied" });
+    const res = await replaceDraftLines(fake.client, "inv-1", [
+      { description: "A", quantity: 1, unit_price_catalog: null, unit_price_charged: 1, discount_pct: 0, gst_rate: 0, catalog_item_id: null },
+    ]);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.reason).toBe("PERMISSION_DENIED");
+    expect(fake.calls).toHaveLength(1);
+  });
+});
+
+describe("Edge Function HTTP error bodies", () => {
+  function httpError(status: number, body: unknown): Error {
+    const err = new Error("Edge Function returned a non-2xx status code");
+    (err as unknown as { context: Response }).context = Response.json(body, { status });
+    return err;
+  }
+
+  it("surfaces the server code + message from a FunctionsHttpError body", async () => {
+    const fake = makeClient();
+    fake.nextFunction(null, httpError(422, {
+      error: { code: "insufficient_stock", message: 'insufficient stock for "Widget": 1 available, 3 requested' },
+    }));
+    const res = await finalizeInvoice(fake.client, "inv-1", "b-1");
+    expect(res.ok).toBe(false);
+    if (!res.ok) {
+      expect(res.error.reason).toBe("VALIDATION_FAILED");
+      expect(res.error.message).toContain("1 available, 3 requested");
+    }
+  });
+
+  it("maps a forbidden body without a message to PERMISSION_DENIED", async () => {
+    const fake = makeClient();
+    fake.nextFunction(null, httpError(403, { error: { code: "forbidden" } }));
+    const res = await voidInvoice(fake.client, "inv-1", "b-1", "reason");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.reason).toBe("PERMISSION_DENIED");
+  });
+
+  it("falls back to the transport error when the body is unreadable", async () => {
+    const fake = makeClient();
+    const err = new Error("Edge Function returned a non-2xx status code");
+    (err as unknown as { context: unknown }).context = { json: async () => { throw new Error("no body"); } };
+    fake.nextFunction(null, err);
+    const res = await finalizeInvoice(fake.client, "inv-1", "b-1");
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error.message).toContain("non-2xx");
   });
 });

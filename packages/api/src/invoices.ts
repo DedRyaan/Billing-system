@@ -92,10 +92,53 @@ export interface VoidResult {
 
 type RowEnvelope = { data: unknown; error: unknown };
 
+interface FunctionsHttpLikeError {
+  context?: { json?: () => Promise<unknown> };
+}
+
+/**
+ * supabase-js surfaces non-2xx Edge Function responses as a FunctionsHttpError
+ * whose generic message ("Edge Function returned a non-2xx status code") hides
+ * the server's `{error:{code,message}}` body. Read the body so callers see the
+ * real code (insufficient_stock, forbidden, ...) and the server's message.
+ */
+async function unwrapFunctionsError(err: unknown): Promise<unknown> {
+  const candidate = err as FunctionsHttpLikeError | null;
+  if (!candidate || typeof candidate !== "object" || !candidate.context?.json) {
+    return err;
+  }
+  let body: unknown;
+  try {
+    body = await candidate.context.json();
+  } catch {
+    return err;
+  }
+  if (typeof body !== "object" || body === null) return err;
+  const record = body as Record<string, unknown>;
+  const nested = record["error"];
+  const source =
+    typeof nested === "object" && nested !== null
+      ? (nested as Record<string, unknown>)
+      : record;
+  const code = source["code"];
+  if (typeof code !== "string") return err;
+  const message = source["message"];
+  return {
+    code,
+    message:
+      typeof message === "string"
+        ? message
+        : err instanceof Error
+          ? err.message
+          : code,
+  };
+}
+
 /** Map Edge Function error responses into the Result<T> envelope. */
-function mapEdgeFunctionError(
-  err: unknown,
-): Result<never> {
+async function mapEdgeFunctionError(
+  raw: unknown,
+): Promise<Result<never>> {
+  const err = await unwrapFunctionsError(raw);
   const mapped = asError(err);
   // Edge Function errors carry a `code` field from the Postgres exception
   // or a custom error object. Map known codes to typed reasons.
@@ -248,6 +291,57 @@ export async function deleteDraftInvoice(
     .eq("business_id", args.businessId)
     .eq("status", "draft")) as RowEnvelope;
   return fromPostgrest<void>(Promise.resolve(res) as never);
+}
+
+/** One draft line as the bill-entry screen holds it (rupee/percent units). */
+export interface DraftLineInput {
+  description: string;
+  hsn_sac?: string | null;
+  quantity: number;
+  /** Catalog list price; null marks an ad-hoc custom-priced line (D-45). */
+  unit_price_catalog: number | null;
+  unit_price_charged: number;
+  discount_pct: number;
+  gst_rate: number;
+  catalog_item_id: string | null;
+}
+
+/**
+ * Replace every line of a draft invoice with `lines`, positioned 1..N in
+ * array order. The finalize Edge Function reads lines from the DB, so a
+ * draft MUST carry its lines before finalizeInvoice() is called. Parent-
+ * must-be-draft is enforced by the invoice_lines RLS policies.
+ */
+export async function replaceDraftLines(
+  client: SupabaseClient,
+  invoiceId: string,
+  lines: DraftLineInput[],
+): Promise<Result<void>> {
+  const del = (await client
+    .from("invoice_lines")
+    .delete()
+    .eq("invoice_id", invoiceId)) as RowEnvelope;
+  if (del.error) {
+    return { ok: false, error: asError(del.error) };
+  }
+  if (lines.length === 0) return { ok: true, data: undefined };
+  const rows = lines.map((line, idx) => ({
+    invoice_id: invoiceId,
+    position: idx + 1,
+    description: line.description,
+    hsn_sac: line.hsn_sac ?? null,
+    quantity: line.quantity,
+    unit_price_catalog: line.unit_price_catalog,
+    unit_price_charged: line.unit_price_charged,
+    discount_pct: line.discount_pct,
+    gst_rate: line.gst_rate,
+    catalog_item_id: line.catalog_item_id,
+  }));
+  const ins = (await client.from("invoice_lines").insert(rows)) as RowEnvelope;
+  if (ins.error) {
+    return { ok: false, error: asError(ins.error) };
+  }
+  return { ok: true, data: undefined };
 }
 
 // ---------------------------------------------------------------------------

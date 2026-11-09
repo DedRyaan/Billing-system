@@ -5,7 +5,7 @@
 // Draft state in React useState (R-49, D-82 — no DB persistence in v1).
 // Data fetching: listCustomersByBusiness + listCatalogItems via React Query.
 // Line operations: add from catalog, add custom ad-hoc, update, remove.
-// Finalize wired: creates draft → finalizeInvoice() → InvoiceDetail view.
+// Finalize wired: creates draft → persists lines → finalizeInvoice() → InvoiceDetail view.
 // Void-and-reissue: admin-only void → replacement draft pre-populated (INV-06).
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -18,8 +18,12 @@ import {
 import { listCatalogItems, type CatalogItemRow } from "@billing/api/catalog-items";
 import {
   createDraftInvoice,
+  deleteDraftInvoice,
   finalizeInvoice,
   getInvoice,
+  replaceDraftLines,
+  updateDraftInvoice,
+  type DraftLineInput,
   type InvoiceRow,
   type InvoiceLineRow,
 } from "@billing/api/invoices";
@@ -109,6 +113,9 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
   const [finalizing, setFinalizing] = useState(false);
   const [voidDialogOpen, setVoidDialogOpen] = useState(false);
   const [recordPaymentOpen, setRecordPaymentOpen] = useState(false);
+  // Server-side replacement draft created by void-and-reissue (INV-06). When
+  // set, finalize reuses it so the audit trail links voided -> reissued.
+  const [pendingDraftId, setPendingDraftId] = useState<string | null>(null);
 
   const businessId = biz.activeBusinessId;
 
@@ -154,7 +161,9 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
 
   // --- POS / GST computation inputs ---
   const supplierStateCode = biz.activeBusiness?.state ?? null;
-  const customerStateCode = selectedCustomer?.state ?? null;
+  // No customer (walk-in sale) or a customer without a state is billed as an
+  // intra-state supply — the same default finalize-invoice applies server-side.
+  const customerStateCode = selectedCustomer?.state ?? supplierStateCode;
   const registrationType = (biz.activeBusiness?.registration_type as "regular" | "composition") ?? "regular";
 
   const draftResult = useDraftTotals(lines, supplierStateCode, customerStateCode, registrationType);
@@ -222,25 +231,72 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
       return;
     }
 
+    const catalogPriceById = new Map(catalogItems.map((item) => [item.id, Number(item.price)]));
+    const draftLines: DraftLineInput[] = validLines.map((l) => {
+      const catalogId = l.catalog_item_id ?? null;
+      return {
+        description: l.description.trim(),
+        hsn_sac: l.hsn_sac ?? null,
+        quantity: l.quantity,
+        unit_price_catalog: catalogId !== null ? (catalogPriceById.get(catalogId) ?? l.unit_price) : null,
+        unit_price_charged: l.unit_price,
+        discount_pct: l.discount_pct,
+        gst_rate: l.gst_rate,
+        catalog_item_id: catalogId,
+      };
+    });
+
     setFinalizing(true);
+    // Drafts created by THIS attempt are removed again if finalize fails, so
+    // failed attempts never leave orphan drafts behind.
+    let createdDraftId: string | null = null;
+    const discardCreatedDraft = async () => {
+      if (createdDraftId === null || auth.client === null) return;
+      await deleteDraftInvoice(auth.client, { id: createdDraftId, businessId }).catch(() => undefined);
+    };
     try {
-      const draftRes = await createDraftInvoice(auth.client, businessId, {
-        fy: fyResult.fy,
-        customer_id: selectedCustomer?.id ?? null,
-      });
-      if (!draftRes.ok) {
-        showToast({ variant: "error", message: `Failed to create draft: ${draftRes.error.message}` });
-        return;
+      let invoiceId: string;
+      if (pendingDraftId !== null) {
+        const patchRes = await updateDraftInvoice(auth.client, {
+          id: pendingDraftId,
+          businessId,
+          patch: { customer_id: selectedCustomer?.id ?? null },
+        });
+        if (!patchRes.ok) {
+          showToast({ variant: "error", message: `Failed to update draft: ${patchRes.error.message}` });
+          return;
+        }
+        invoiceId = pendingDraftId;
+      } else {
+        const draftRes = await createDraftInvoice(auth.client, businessId, {
+          fy: fyResult.fy,
+          customer_id: selectedCustomer?.id ?? null,
+        });
+        if (!draftRes.ok) {
+          showToast({ variant: "error", message: `Failed to create draft: ${draftRes.error.message}` });
+          return;
+        }
+        invoiceId = draftRes.data.id;
+        createdDraftId = invoiceId;
       }
 
-      const invoiceId = draftRes.data.id;
+      // Persist the lines — the server computes taxes from the stored rows.
+      const linesRes = await replaceDraftLines(auth.client, invoiceId, draftLines);
+      if (!linesRes.ok) {
+        await discardCreatedDraft();
+        showToast({ variant: "error", message: `Failed to save line items: ${linesRes.error.message}` });
+        return;
+      }
 
       // Finalize
       const result = await finalizeInvoice(auth.client, invoiceId, businessId);
       if (!result.ok) {
+        await discardCreatedDraft();
         showToast({ variant: "error", message: `Finalize failed: ${result.error.message}` });
         return;
       }
+      createdDraftId = null;
+      setPendingDraftId(null);
 
       // Invalidate caches
       await queryClient.invalidateQueries({
@@ -262,6 +318,7 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
         });
       }
     } catch (err) {
+      await discardCreatedDraft();
       showToast({
         variant: "error",
         message: err instanceof Error ? `Finalize failed: ${err.message}` : "Finalize failed",
@@ -269,7 +326,7 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
     } finally {
       setFinalizing(false);
     }
-  }, [auth.client, businessId, finalizing, lines, selectedCustomer, queryClient]);
+  }, [auth.client, businessId, finalizing, lines, selectedCustomer, queryClient, pendingDraftId, catalogItems]);
 
   // --- Void flow ---
   const handleVoided = useCallback(
@@ -299,13 +356,19 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
       }));
 
       setLines(populatedLines.length > 0 ? populatedLines : [createEmptyLine()]);
+      // Carry the buyer over too — the replacement draft keeps customer_id.
+      const draftCustomerId = res.data.customer_id;
+      setSelectedCustomer(
+        draftCustomerId !== null ? (customers.find((c) => c.id === draftCustomerId) ?? null) : null,
+      );
+      setPendingDraftId(newDraftId);
       setView({ kind: "draft" });
       showToast({
         variant: "success",
         message: "Draft created from voided invoice. Review and finalize.",
       });
     },
-    [auth.client, businessId],
+    [auth.client, businessId, customers],
   );
 
   const handlePaymentRecorded = useCallback(async (invoiceId: string) => {
@@ -325,6 +388,7 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
   const handleNewBill = useCallback(() => {
     setLines([createEmptyLine()]);
     setSelectedCustomer(null);
+    setPendingDraftId(null);
     setView({ kind: "draft" });
   }, []);
 
@@ -332,6 +396,7 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
   const handleBack = useCallback(() => {
     setLines([createEmptyLine()]);
     setSelectedCustomer(null);
+    setPendingDraftId(null);
     setView({ kind: "draft" });
   }, []);
 
@@ -445,6 +510,11 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
               onClick={() => {
                 setLines([createEmptyLine()]);
                 setSelectedCustomer(null);
+                if (pendingDraftId !== null && auth.client !== null && businessId !== null) {
+                  // Discarding a void-and-reissue draft removes it server-side too.
+                  void deleteDraftInvoice(auth.client, { id: pendingDraftId, businessId }).catch(() => undefined);
+                }
+                setPendingDraftId(null);
               }}
               disabled={!isDirty || finalizing}
             >

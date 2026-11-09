@@ -212,6 +212,63 @@ describe("billing flow integration", () => {
   });
 });
 
+describe("finalize persists the draft before finalizing", () => {
+  it("writes the typed lines to invoice_lines, then invokes finalize-invoice", async () => {
+    const user = userEvent.setup();
+    const draftRow = { ...ISSUED_INVOICE, id: "draft-1", status: "draft", seq: null, invoice_lines: [] };
+    const client = makeScriptedClient(fixtures({ invoices: [draftRow] }));
+    const invoke = client.functions.invoke as unknown as ReturnType<typeof vi.fn>;
+    invoke.mockImplementation(async (name: string) =>
+      name === "finalize-invoice"
+        ? { data: { invoice_id: "draft-1", doc_number: "1", status: "issued", total_amount: 0 }, error: null }
+        : { data: null, error: null },
+    );
+    mount(client);
+    await waitFor(() => expect(screen.getByText("New Bill")).toBeInTheDocument());
+
+    await user.type(screen.getAllByRole("textbox")[0]!, "Widget");
+    const finalizeBtn = screen.getByRole("button", { name: /^finalize$/i });
+    await waitFor(() => expect(finalizeBtn).toBeEnabled());
+    await user.click(finalizeBtn);
+
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith("finalize-invoice", expect.anything()));
+    const lineInsert = client.__calls.find((c) => c.table === "invoice_lines" && c.op === "insert");
+    expect(lineInsert).toBeDefined();
+    const rows = lineInsert!.payload as Array<Record<string, unknown>>;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ invoice_id: "draft-1", position: 1, description: "Widget", catalog_item_id: null, unit_price_catalog: null });
+    const insertIdx = client.__calls.indexOf(lineInsert!);
+    const draftIdx = client.__calls.findIndex((c) => c.table === "invoices" && c.op === "insert");
+    expect(draftIdx).toBeGreaterThanOrEqual(0);
+    expect(draftIdx).toBeLessThan(insertIdx);
+    // Let the post-finalize detail fetch settle before the test unmounts.
+    await waitFor(() => expect(screen.getByText(/finalized successfully/i)).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Back" })).toBeInTheDocument());
+  });
+
+  it("deletes the draft it created when finalize fails", async () => {
+    const user = userEvent.setup();
+    const draftRow = { ...ISSUED_INVOICE, id: "draft-1", status: "draft", seq: null, invoice_lines: [] };
+    const client = makeScriptedClient(fixtures({ invoices: [draftRow] }));
+    const invoke = client.functions.invoke as unknown as ReturnType<typeof vi.fn>;
+    invoke.mockImplementation(async () => ({ data: null, error: new Error("boom") }));
+    mount(client);
+    await waitFor(() => expect(screen.getByText("New Bill")).toBeInTheDocument());
+
+    await user.type(screen.getAllByRole("textbox")[0]!, "Widget");
+    const finalizeBtn = screen.getByRole("button", { name: /^finalize$/i });
+    await waitFor(() => expect(finalizeBtn).toBeEnabled());
+    await user.click(finalizeBtn);
+
+    await waitFor(() =>
+      expect(client.__calls.some((c) => c.table === "invoices" && c.op === "delete")).toBe(true),
+    );
+    const del = client.__calls.find((c) => c.table === "invoices" && c.op === "delete")!;
+    expect(del.filters).toContainEqual({ col: "id", op: "eq", val: "draft-1" });
+    expect(del.filters).toContainEqual({ col: "status", op: "eq", val: "draft" });
+  });
+});
+
 describe("InvoiceDetail", () => {
   function mountDetail(invoice: InvoiceRow, lines: InvoiceLineRow[], clientOverride?: ReturnType<typeof makeScriptedClient>) {
     const c = clientOverride ?? makeScriptedClient(fixtures());
