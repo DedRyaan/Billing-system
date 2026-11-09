@@ -28,6 +28,8 @@ import {
   type InvoiceLineRow,
 } from "@billing/api/invoices";
 import { keysFor } from "@billing/api/query-keys";
+import { subscribeToEntity } from "@billing/api/realtime";
+import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
 import { deriveFinancialYear } from "@billing/gst";
 import { HeaderRow } from "../../shell/HeaderRow";
 import { Button } from "../../components/ui/Button";
@@ -132,6 +134,43 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
       cancelled = true;
     };
   }, [targetInvoiceId, auth.client, businessId]);
+
+  // --- Live sync (multi-device) ---
+  // Pickers follow customer/catalog edits (incl. stock) made elsewhere.
+  useBusinessRealtime(auth.client, "customers", businessId);
+  useBusinessRealtime(auth.client, "catalog_items", businessId);
+
+  // The open invoice (view state, not a query) refreshes when another device
+  // voids it or a payment moves its totals.
+  const detailInvoiceId = view.kind === "detail" ? view.invoice.id : null;
+  useEffect(() => {
+    if (detailInvoiceId === null || auth.client === null || businessId === null) return;
+    const client = auth.client;
+    let cancelled = false;
+    const unsubscribe = subscribeToEntity(
+      client,
+      "invoices",
+      businessId,
+      (payload) => {
+        const row = (payload.new ?? payload.old) as { id?: unknown } | undefined;
+        if (row?.id !== detailInvoiceId) return;
+        void (async () => {
+          const res = await getInvoice(client, detailInvoiceId, businessId);
+          if (cancelled || !res.ok) return;
+          setView((current) =>
+            current.kind === "detail" && current.invoice.id === detailInvoiceId
+              ? { kind: "detail", invoice: res.data, lines: res.data.invoice_lines }
+              : current,
+          );
+        })();
+      },
+      "detail",
+    );
+    return () => {
+      cancelled = true;
+      unsubscribe();
+    };
+  }, [detailInvoiceId, auth.client, businessId]);
 
   // --- Data fetching ---
   const customerQuery = useQuery({

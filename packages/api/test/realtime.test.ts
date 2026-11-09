@@ -53,3 +53,20 @@ describe("subscribeToEntity", () => {
     expect(onEvent).not.toHaveBeenCalled();
   });
 });
+
+describe("subscribeToEntity — billing entities", () => {
+  it("treats invoices and payments as tenant tables", () => {
+    const fake = makeClient();
+    expect(() => subscribeToEntity(fake.client, "invoices", "global", vi.fn())).toThrowError(/global/i);
+    expect(() => subscribeToEntity(fake.client, "payments", "global", vi.fn())).toThrowError(/global/i);
+    subscribeToEntity(fake.client, "payments", "bid-1", vi.fn());
+    expect(fake.channels[0]!.config).toMatchObject({ table: "payments", filter: "business_id=eq.bid-1" });
+  });
+
+  it("a tag gives concurrent subscribers distinct channel names", () => {
+    const fake = makeClient();
+    subscribeToEntity(fake.client, "invoices", "bid-1", vi.fn());
+    subscribeToEntity(fake.client, "invoices", "bid-1", vi.fn(), "detail");
+    expect(fake.channels.map((c) => c.name)).toEqual(["entity:invoices:bid-1", "entity:invoices:bid-1:detail"]);
+  });
+});

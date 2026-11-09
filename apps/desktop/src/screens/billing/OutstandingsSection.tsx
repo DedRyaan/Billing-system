@@ -15,6 +15,7 @@ import { Badge } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { useAuth } from "../../auth/AuthProvider";
 import { useActiveBusiness } from "../../business/ActiveBusinessProvider";
+import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
 
 function fmtPaise(amount: number): string {
   const paise = BigInt(Math.round(amount * 100));
@@ -38,6 +39,9 @@ export function OutstandingsSection() {
   const auth = useAuth();
   const biz = useActiveBusiness();
   const businessId = biz.activeBusinessId;
+  // Live sync: bills issued/voided or paid on another device refresh dues.
+  useBusinessRealtime(auth.client, "invoices", businessId);
+  useBusinessRealtime(auth.client, "payments", businessId);
   const navigate = useNavigate();
 
   const query = useQuery({

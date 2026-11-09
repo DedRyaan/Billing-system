@@ -13,6 +13,7 @@ import { keysFor } from "@billing/api/query-keys";
 import { Badge } from "../../components/ui/Badge";
 import { Button } from "../../components/ui/Button";
 import { useAuth } from "../../auth/AuthProvider";
+import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
 
 export interface InvoiceDetailProps {
   invoice: InvoiceRow;
@@ -63,6 +64,8 @@ export function InvoiceDetail({
   onBack,
 }: InvoiceDetailProps) {
   const auth = useAuth();
+  // Live sync: payments recorded on another device refresh the history.
+  useBusinessRealtime(auth.client, "payments", invoice.business_id);
   const sortedLines = [...lines].sort((a, b) => a.position - b.position);
 
   const totalCgst = lines.reduce((s, l) => s + Number(l.cgst_amount), 0);

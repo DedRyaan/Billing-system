@@ -215,3 +215,48 @@ describe("useBusinessRealtime", () => {
     });
   });
 });
+
+describe("useBusinessRealtime — billing entities (live sync)", () => {
+  it("a payment event refreshes payments, invoices and outstandings for the business only", async () => {
+    const client = fakeRealtimeClient();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(keysFor.payments(BID_A, "inv-1"), []);
+    qc.setQueryData(keysFor.invoices(BID_A), []);
+    qc.setQueryData(keysFor.outstandings(BID_A), []);
+    qc.setQueryData(keysFor.invoices(BID_B), []);
+
+    mountHook(client, "payments", BID_A, { qc });
+    await waitFor(() => expect(client.__channels.length).toBe(1));
+    expect(client.__channels[0]!.name).toBe(`entity:payments:${BID_A}`);
+
+    act(() => {
+      client.__channels[0]!.emit({ eventType: "INSERT", new: { id: "p1", business_id: BID_A, invoice_id: "inv-1" } });
+    });
+
+    expect(qc.getQueryState(keysFor.payments(BID_A, "inv-1"))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(keysFor.invoices(BID_A))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(keysFor.outstandings(BID_A))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(keysFor.invoices(BID_B))?.isInvalidated).toBe(false);
+  });
+
+  it("an invoice event refreshes invoices and outstandings, ignoring foreign rows", async () => {
+    const client = fakeRealtimeClient();
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    qc.setQueryData(keysFor.invoices(BID_A), []);
+    qc.setQueryData(keysFor.outstandings(BID_A), []);
+
+    mountHook(client, "invoices", BID_A, { qc });
+    await waitFor(() => expect(client.__channels.length).toBe(1));
+
+    act(() => {
+      client.__channels[0]!.emit({ eventType: "UPDATE", new: { id: "i1", business_id: BID_B } });
+    });
+    expect(qc.getQueryState(keysFor.invoices(BID_A))?.isInvalidated).toBe(false);
+
+    act(() => {
+      client.__channels[0]!.emit({ eventType: "UPDATE", new: { id: "i1", business_id: BID_A } });
+    });
+    expect(qc.getQueryState(keysFor.invoices(BID_A))?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(keysFor.outstandings(BID_A))?.isInvalidated).toBe(true);
+  });
+});

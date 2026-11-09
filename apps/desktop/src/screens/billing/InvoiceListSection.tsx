@@ -14,6 +14,7 @@ import { Badge, type BadgeTone } from "../../components/ui/Badge";
 import { EmptyState } from "../../components/ui/EmptyState";
 import { useAuth } from "../../auth/AuthProvider";
 import { useActiveBusiness } from "../../business/ActiveBusinessProvider";
+import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
 
 function statusBadgeTone(status: InvoiceRow["status"]): BadgeTone {
   switch (status) {
@@ -39,6 +40,7 @@ export function InvoiceListSection({ onSelectDraft }: InvoiceListSectionProps) {
   const auth = useAuth();
   const biz = useActiveBusiness();
   const businessId = biz.activeBusinessId;
+  useBusinessRealtime(auth.client, "invoices", businessId);
 
   const query = useQuery({
     queryKey: keysFor.invoices(businessId ?? "global"),

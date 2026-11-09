@@ -7,7 +7,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-export type RealtimeEntity = "businesses" | "customers" | "catalog_items";
+export type RealtimeEntity = "businesses" | "customers" | "catalog_items" | "invoices" | "payments";
 
 export interface RealtimeEventPayload {
   eventType: string;
@@ -15,7 +15,12 @@ export interface RealtimeEventPayload {
   old?: unknown;
 }
 
-const TENANT_TABLES: ReadonlySet<RealtimeEntity> = new Set(["customers", "catalog_items"]);
+const TENANT_TABLES: ReadonlySet<RealtimeEntity> = new Set([
+  "customers",
+  "catalog_items",
+  "invoices",
+  "payments",
+]);
 
 export class GlobalScopeNotAllowedError extends Error {
   constructor(entity: RealtimeEntity) {
@@ -29,12 +34,19 @@ export function subscribeToEntity(
   entity: RealtimeEntity,
   businessId: string,
   onEvent: (payload: RealtimeEventPayload) => void,
+  /**
+   * Distinguishes concurrent subscriptions to the same entity+scope.
+   * supabase-js returns the EXISTING channel for a repeated topic, so two
+   * independent subscribers must not share a name (one unsubscribe would
+   * tear down the other).
+   */
+  tag?: string,
 ): () => void {
   if (TENANT_TABLES.has(entity) && businessId === "global") {
     throw new GlobalScopeNotAllowedError(entity);
   }
 
-  const channelName = `entity:${entity}:${businessId}`;
+  const channelName = `entity:${entity}:${businessId}${tag !== undefined ? `:${tag}` : ""}`;
   const channel = client.channel(channelName);
   const filter =
     entity === "businesses" && businessId === "global"

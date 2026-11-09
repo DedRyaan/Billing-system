@@ -32,6 +32,16 @@ function invalidatePrefix(qc: QueryClient, entity: RealtimeEntity, scope: string
     case "customers":
       void qc.invalidateQueries({ queryKey: keysFor.customers(scope) });
       return;
+    case "invoices":
+      // Issue/void/payment-total changes move both lists.
+      void qc.invalidateQueries({ queryKey: keysFor.invoices(scope) });
+      void qc.invalidateQueries({ queryKey: keysFor.outstandings(scope) });
+      return;
+    case "payments":
+      void qc.invalidateQueries({ queryKey: keysFor.payments(scope) });
+      void qc.invalidateQueries({ queryKey: keysFor.invoices(scope) });
+      void qc.invalidateQueries({ queryKey: keysFor.outstandings(scope) });
+      return;
   }
 }
 

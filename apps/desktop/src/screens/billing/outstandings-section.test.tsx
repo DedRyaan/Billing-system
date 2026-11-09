@@ -11,9 +11,13 @@ import type { InvoiceRow } from "@billing/api/invoices";
 import { OutstandingsSection } from "./OutstandingsSection";
 
 vi.mock("@billing/api/payments", () => ({ listOutstandingInvoices: vi.fn() }));
-vi.mock("../../auth/AuthProvider", () => ({
-  useAuth: () => ({ client: {}, profile: { id: "user-1" } }),
-}));
+vi.mock("../../auth/AuthProvider", () => {
+  // Stable client with inert realtime stubs (the section subscribes for
+  // live sync); a fresh object per render would resubscribe every render.
+  const channel = { on: () => channel, subscribe: () => channel };
+  const client = { channel: () => channel, removeChannel: () => Promise.resolve("ok") };
+  return { useAuth: () => ({ client, profile: { id: "user-1" } }) };
+});
 vi.mock("../../business/ActiveBusinessProvider", () => ({
   useActiveBusiness: () => ({ activeBusinessId: "biz-1", activeBusiness: null }),
 }));
