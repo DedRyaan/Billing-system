@@ -64,6 +64,8 @@ export function makeClient(): FakeClientHandle {
     delete(): Builder;
     eq(col: string, val: unknown): Builder;
     neq(col: string, val: unknown): Builder;
+    in(col: string, vals: unknown[]): Builder;
+    ilike(col: string, pattern: string): Builder;
     or(expr: string): Builder;
     order(col: string, opts?: { ascending?: boolean }): Builder;
     limit(n: number): Builder;
@@ -104,6 +106,14 @@ export function makeClient(): FakeClientHandle {
       },
     neq(col: string, val: unknown) {
       call.filters.push({ col, op: "neq", val });
+      return builder(call);
+    },
+    in(col: string, vals: unknown[]) {
+      call.filters.push({ col, op: "in", val: vals });
+      return builder(call);
+    },
+    ilike(col: string, pattern: string) {
+      call.filters.push({ col, op: "ilike", val: pattern });
       return builder(call);
     },
     or(expr: string) {

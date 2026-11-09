@@ -96,14 +96,22 @@ export function BillEntryScreen() {
 
 function RouterDeepLinkHost() {
   const { invoiceId } = useSearch({ strict: false }) as { invoiceId?: string };
-  return <BillEntryContent targetInvoiceId={invoiceId} />;
+  const router = useRouter();
+  return (
+    <BillEntryContent
+      targetInvoiceId={invoiceId}
+      onShowHistory={() => void router.navigate({ to: "/bills/history" })}
+    />
+  );
 }
 
 interface BillEntryContentProps {
   targetInvoiceId?: string | undefined;
+  /** Opens the All Bills list; absent when no router is mounted (tests). */
+  onShowHistory?: () => void;
 }
 
-function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
+function BillEntryContent({ targetInvoiceId, onShowHistory }: BillEntryContentProps) {
   const auth = useAuth();
   const biz = useActiveBusiness();
   const online = useOnlineStatus();
@@ -439,12 +447,19 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
     setView({ kind: "draft" });
   }, []);
 
+  const historyAction =
+    onShowHistory !== undefined ? (
+      <Button variant="secondary" size="sm" onClick={onShowHistory}>
+        All bills
+      </Button>
+    ) : undefined;
+
   // --- Detail view ---
   if (view.kind === "detail") {
     const isAdmin = auth.role === "admin" || auth.role === "super_admin";
     return (
       <>
-        <HeaderRow title="Invoice" />
+        <HeaderRow title="Invoice" actions={historyAction} />
         <InvoiceDetail
           invoice={view.invoice}
           lines={view.lines}
@@ -483,7 +498,7 @@ function BillEntryContent({ targetInvoiceId }: BillEntryContentProps) {
   // --- Draft view ---
   return (
     <>
-      <HeaderRow title="New Bill" />
+      <HeaderRow title="New Bill" actions={historyAction} />
       <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-lg py-lg">
         <div className="mx-auto flex w-full max-w-[48rem] flex-col gap-md">
           {/* Customer picker */}

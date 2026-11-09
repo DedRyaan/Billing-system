@@ -5,6 +5,7 @@ export { ItemPicker } from "./ItemPicker";
 export { LineItemsTable } from "./LineItemsTable";
 export { GstPreview } from "./GstPreview";
 export { InvoiceListSection } from "./InvoiceListSection";
+export { BillHistoryScreen } from "./BillHistoryScreen";
 export { InvoiceDetail } from "./InvoiceDetail";
 export { OutstandingsSection } from "./OutstandingsSection";
 export { VoidDialog } from "./VoidDialog";

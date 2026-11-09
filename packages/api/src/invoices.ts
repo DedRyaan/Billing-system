@@ -192,6 +192,77 @@ export async function listInvoicesByBusiness(
   return fromPostgrest<InvoiceRow[]>(Promise.resolve(res) as never);
 }
 
+export type BillHistoryStatus = "all" | "issued" | "voided";
+
+export interface BillHistoryCursor {
+  issuedAt: string;
+  id: string;
+}
+
+export interface BillHistoryPage {
+  rows: InvoiceRow[];
+  /** null when this page is the last one. */
+  nextCursor: BillHistoryCursor | null;
+}
+
+export const BILL_HISTORY_PAGE_SIZE = 50;
+
+/** Escape LIKE wildcards so user text matches literally. */
+function escapeLike(text: string): string {
+  return text.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
+/**
+ * One page of a business's numbered bills (issued + voided), newest first.
+ * Keyset-paginated on (issued_at, id) so pages stay complete beyond the
+ * PostgREST row cap and stable while new bills arrive. Drafts are excluded:
+ * they carry no number and live only inside bill entry.
+ *
+ * `search` matches a bill number exactly when it is all digits, otherwise
+ * the frozen buyer name (case-insensitive substring).
+ */
+export async function listBillHistoryPage(
+  client: SupabaseClient,
+  businessId: string,
+  opts: {
+    status?: BillHistoryStatus;
+    search?: string;
+    cursor?: BillHistoryCursor | null;
+    pageSize?: number;
+  } = {},
+): Promise<Result<BillHistoryPage>> {
+  const pageSize = opts.pageSize ?? BILL_HISTORY_PAGE_SIZE;
+  const status = opts.status ?? "all";
+  let q = client.from("invoices").select("*").eq("business_id", businessId);
+  q = status === "all" ? q.in("status", ["issued", "voided"]) : q.eq("status", status);
+
+  const search = (opts.search ?? "").trim();
+  if (search !== "") {
+    q = /^\d+$/.test(search)
+      ? q.eq("seq", Number(search))
+      : q.ilike("customer_name", `%${escapeLike(search)}%`);
+  }
+
+  if (opts.cursor) {
+    const { issuedAt, id } = opts.cursor;
+    q = q.or(`issued_at.lt.${issuedAt},and(issued_at.eq.${issuedAt},id.lt.${id})`);
+  }
+
+  const res = (await q
+    .order("issued_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(pageSize)) as RowEnvelope;
+  const page = await fromPostgrest<InvoiceRow[]>(Promise.resolve(res) as never);
+  if (!page.ok) return page;
+  const rows = page.data;
+  const last = rows[rows.length - 1];
+  const nextCursor =
+    rows.length === pageSize && last !== undefined && last.issued_at !== null
+      ? { issuedAt: last.issued_at, id: last.id }
+      : null;
+  return { ok: true, data: { rows, nextCursor } };
+}
+
 /**
  * Get a single invoice with its lines (detail view).
  * Filters by both id AND business_id for tenant scoping.

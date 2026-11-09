@@ -7,6 +7,7 @@ import {
   finalizeInvoice,
   getInvoice,
   getInvoiceLines,
+  listBillHistoryPage,
   listInvoicesByBusiness,
   replaceDraftLines,
   updateDraftInvoice,
@@ -367,5 +368,55 @@ describe("Edge Function HTTP error bodies", () => {
     const res = await finalizeInvoice(fake.client, "inv-1", "b-1");
     expect(res.ok).toBe(false);
     if (!res.ok) expect(res.error.message).toContain("non-2xx");
+  });
+});
+
+describe("listBillHistoryPage", () => {
+  const row = (id: string, issuedAt: string) => ({ ...INVOICE_ROW, id, status: "issued", issued_at: issuedAt });
+
+  it("lists issued + voided bills newest first, scoped to the business", async () => {
+    const fake = makeClient();
+    fake.next([row("i2", "2026-11-02T10:00:00Z")]);
+    const res = await listBillHistoryPage(fake.client, "b-1");
+    expect(res.ok).toBe(true);
+    const call = fake.calls[0]!;
+    expect(call.table).toBe("invoices");
+    expect(call.filters).toContainEqual({ col: "business_id", op: "eq", val: "b-1" });
+    expect(call.filters).toContainEqual({ col: "status", op: "in", val: ["issued", "voided"] });
+    expect(call.orders).toEqual([
+      { col: "issued_at", ascending: false },
+      { col: "id", ascending: false },
+    ]);
+    expect(call.limit).toBe(50);
+    if (res.ok) expect(res.data.nextCursor).toBeNull();
+  });
+
+  it("returns a keyset cursor on a full page and applies it on the next call", async () => {
+    const fake = makeClient();
+    fake.next([row("i3", "2026-11-03T00:00:00Z"), row("i2", "2026-11-02T00:00:00Z")]);
+    const first = await listBillHistoryPage(fake.client, "b-1", { pageSize: 2 });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.data.nextCursor).toEqual({ issuedAt: "2026-11-02T00:00:00Z", id: "i2" });
+
+    fake.next([]);
+    await listBillHistoryPage(fake.client, "b-1", { pageSize: 2, cursor: first.data.nextCursor });
+    expect(fake.calls[1]!.filters).toContainEqual({
+      col: "__or",
+      op: "or",
+      val: "issued_at.lt.2026-11-02T00:00:00Z,and(issued_at.eq.2026-11-02T00:00:00Z,id.lt.i2)",
+    });
+  });
+
+  it("searches by exact bill number for digits, else by buyer name with LIKE wildcards escaped", async () => {
+    const fake = makeClient();
+    fake.next([]);
+    await listBillHistoryPage(fake.client, "b-1", { search: " 42 ", status: "voided" });
+    expect(fake.calls[0]!.filters).toContainEqual({ col: "seq", op: "eq", val: 42 });
+    expect(fake.calls[0]!.filters).toContainEqual({ col: "status", op: "eq", val: "voided" });
+
+    fake.next([]);
+    await listBillHistoryPage(fake.client, "b-1", { search: "50%_off" });
+    expect(fake.calls[1]!.filters).toContainEqual({ col: "customer_name", op: "ilike", val: String.raw`%50\%\_off%` });
   });
 });
