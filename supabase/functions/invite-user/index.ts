@@ -33,6 +33,16 @@
 //                      invites (D-07 visibility half). Read-only: no audit
 //                      entry by D-23 (read/view telemetry excluded).
 //
+//   create {email, full_name, business_ids?}
+//                      the desktop app's Add staff path: the fallback branch
+//                      directly (no email link — links cannot open an
+//                      installed app). Returns temp_password ONCE.
+//
+//   reset_password {user_id}
+//                      admin-issued temp password + forced change. Admins
+//                      reset staff; only the super admin resets admins;
+//                      nobody resets the super admin or themselves.
+//
 // Caller gate: POST with Authorization: Bearer <JWT>. The token is verified
 // server-side via GoTrue (auth.getUser), then the profile role resolves from
 // the SERVER-CONTROLLED profiles row (never JWT metadata) and must be
@@ -68,6 +78,21 @@ const commandSchema = z.discriminatedUnion("action", [
   }),
   z.object({
     action: z.literal("list"),
+  }),
+  // Direct creation for the desktop app: no email round-trip (invite links
+  // cannot land in an installed app) — account + one-time temp password the
+  // admin shares; the forced-change flag makes the staff member pick their
+  // own password at first sign-in.
+  z.object({
+    action: z.literal("create"),
+    email: z.string().trim().toLowerCase().pipe(z.email()),
+    full_name: z.string().trim().min(1).max(200),
+    business_ids: z.array(z.uuid()).min(1).optional(),
+  }),
+  // Admin password reset: new one-time temp password + forced change.
+  z.object({
+    action: z.literal("reset_password"),
+    user_id: z.uuid(),
   }),
 ]);
 
@@ -192,6 +217,19 @@ async function runInvite(
   }
 
   // ---- Fallback (D-09): admin-created account, temp password, forced change.
+  return createWithTempPassword(service, cmd, "auth.invite_fallback");
+}
+
+/**
+ * Admin-created account with a one-time temp password and the forced-change
+ * flag. Shared by the invite fallback (D-09) and the direct `create` action.
+ * Any failure rolls the auth user back so nothing half-exists.
+ */
+async function createWithTempPassword(
+  service: SupabaseClient,
+  cmd: { email: string; full_name?: string; business_ids?: string[] },
+  auditAction: "auth.invite_fallback" | "auth.staff_created",
+): Promise<Response> {
   const tempPassword = generateTempPassword();
   const created = await service.auth.admin.createUser({
     email: cmd.email,
@@ -276,7 +314,7 @@ async function runInvite(
   }
 
   await service.rpc("write_audit", {
-    p_action: "auth.invite_fallback",
+    p_action: auditAction,
     p_target_table: "profiles",
     p_target_id: user.id,
     p_business_id: null,
@@ -289,6 +327,50 @@ async function runInvite(
   });
 
   return json({ mode: "fallback", temp_password: tempPassword, user_id: user.id }, 201);
+}
+
+async function runResetPassword(
+  service: SupabaseClient,
+  caller: CallerProfile,
+  userId: string,
+): Promise<Response> {
+  if (userId === caller.id) {
+    // Own password changes go through the signed-in flow, not a temp reset.
+    return json({ error: { code: "cannot_reset_self" } }, 409);
+  }
+  const target = await service
+    .from("profiles")
+    .select("id, role, email")
+    .eq("id", userId)
+    .single();
+  if (target.error || !target.data) {
+    return json({ error: { code: "user_not_found" } }, 404);
+  }
+  const targetRole = (target.data as { role: string }).role;
+  // Governance mirrors 0007: admins manage staff; only the super admin may
+  // reset another admin; nobody resets the super admin.
+  if (targetRole === "super_admin" || (targetRole === "admin" && caller.role !== "super_admin")) {
+    return json({ error: { code: "forbidden" } }, 403);
+  }
+
+  const tempPassword = generateTempPassword();
+  const updated = await service.auth.admin.updateUserById(userId, { password: tempPassword });
+  if (updated.error) {
+    return json({ error: { code: "reset_failed", message: updated.error.message } }, 502);
+  }
+  const flagged = await service.rpc("mark_must_change_password", { p_target: userId });
+  if (flagged.error) {
+    return json({ error: { code: "mark_flag_failed" } }, 500);
+  }
+  await service.rpc("write_audit", {
+    p_action: "auth.password_reset_by_admin",
+    p_target_table: "profiles",
+    p_target_id: userId,
+    p_business_id: null,
+    p_before: null,
+    p_after: JSON.stringify({ reset_by: caller.id, must_change_password: true }),
+  });
+  return json({ mode: "reset", temp_password: tempPassword, user_id: userId }, 200);
 }
 
 async function runCancel(service: SupabaseClient, userId: string): Promise<Response> {
@@ -388,6 +470,10 @@ export async function handleInviteUser(req: Request, deps: InviteUserDeps = {}):
       return runCancel(service, parsed.data.user_id);
     case "list":
       return runList(service);
+    case "create":
+      return createWithTempPassword(service, parsed.data, "auth.staff_created");
+    case "reset_password":
+      return runResetPassword(service, caller.caller, parsed.data.user_id);
   }
 }
 
