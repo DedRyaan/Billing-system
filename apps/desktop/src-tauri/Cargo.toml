@@ -19,6 +19,9 @@ tauri-build = { version = "2", features = [] }
 
 [dependencies]
 tauri = { version = "2.10", features = [] }
+# generate_context! emits serde_json values for the plugins block in
+# tauri.conf.json (deep-link schemes); the crate must be a direct dependency.
+serde_json = "1"
 # Window geometry persistence (D-66/A12).
 tauri-plugin-window-state = "2"
 # File-backed session storage seam (D-70/AUTH-01).
