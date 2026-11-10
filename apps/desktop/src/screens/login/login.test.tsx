@@ -39,7 +39,8 @@ describe("LoginScreen (S1)", () => {
     expect(await screen.findByRole("heading", { name: "Sign in" })).toBeInTheDocument();
     expect(screen.getByLabelText("Email")).toHaveAttribute("type", "email");
     expect(screen.getByLabelText("Password")).toHaveAttribute("type", "password");
-    expect(screen.getByAltText("Billing monogram")).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "Bahi logo" })).toBeInTheDocument();
+    expect(screen.getByTestId("login-phrase").textContent).not.toBe("");
     // Zero signup language anywhere.
     expect(screen.getByText("Accounts are created by invitation by an admin.")).toBeInTheDocument();
     expect(screen.queryByText(/sign up/i)).toBeNull();

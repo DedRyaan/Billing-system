@@ -1,7 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
-    <rect width="100%" height="100%" fill="#F5F3EE" />
-    <g id="logo-mark-tile">
-        <rect x="48" y="48" width="416" height="416" rx="64" fill="none" stroke="#1A1A18" stroke-width="24" />
-        <rect x="156" y="156" width="200" height="200" rx="24" fill="#4A5FE5" />
-    </g>
-</svg>

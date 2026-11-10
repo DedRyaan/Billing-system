@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Bahi app mark: indigo tile, cream ledger (bahi-khata) with a spine,
+       vermilion ribbon bookmark and a stroked rupee sign. Paths only (no
+       fonts) so every rasterizer renders it identically. -->
+  <rect x="0" y="0" width="512" height="512" rx="112" fill="#4A5FE5"/>
+  <rect x="124" y="92" width="264" height="328" rx="30" fill="#F5F3EE"/>
+  <rect x="124" y="92" width="52" height="328" rx="26" fill="#DED8CA"/>
+  <rect x="150" y="92" width="26" height="328" fill="#DED8CA"/>
+  <path d="M318 92 V178 L340 160 L362 178 V92 Z" fill="#C6403C"/>
+  <g fill="none" stroke="#1A1A18" stroke-width="24" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M214 196 H330"/>
+    <path d="M214 240 H330"/>
+    <path d="M214 196 H252 C306 196 306 284 252 284 H222 L318 372"/>
+  </g>
+</svg>

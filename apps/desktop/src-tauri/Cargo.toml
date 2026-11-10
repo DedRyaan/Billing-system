@@ -6,9 +6,9 @@
 
 [package]
 name = "billing-desktop"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "GST billing system - desktop shell (Tauri 2)"
+description = "Bahi - GST billing desktop shell (Tauri 2)"
 
 [lib]
 name = "billing_desktop_lib"

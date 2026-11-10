@@ -10,7 +10,7 @@ export const SECTION_ABOUT = "About";
 
 export const SIGN_OUT_BUTTON = "Sign out";
 /** Static fallback when @tauri-apps/api app.getVersion is unavailable (browser dev). */
-export const ABOUT_APP_NAME = "Billing";
+export const ABOUT_APP_NAME = "Bahi";
 export const ABOUT_VERSION_FALLBACK = "dev";
 export const aboutVersionLabel = (version: string): string => `Version ${version}`;
 

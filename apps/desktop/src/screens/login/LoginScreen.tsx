@@ -5,10 +5,12 @@
 //     @billing/api/errors - NEVER re-typed here;
 //   * ?reason= banners come from strings/global verbatim;
 //   * zero signup language, no links, no logo wall.
-// Geometry: centered 360px column on paper; monogram 48px; Display headline;
+// Geometry: centered 360px column on paper; app logo 48px + rotating quip; Display headline;
 // full-width primary CTA h36; footer caption exact.
 
 import { useState, type FormEvent, type FocusEvent, type KeyboardEvent } from "react";
+import { AppLogo } from "../../components/brand/AppLogo";
+import { APP_NAME, pickLoginPhrase } from "../../lib/strings/brand";
 import { LoaderCircle } from "lucide-react";
 import { GENERIC_CREDENTIALS_MESSAGE } from "@billing/api/errors";
 import {
@@ -63,6 +65,8 @@ const inputClasses =
 
 export function LoginScreen({ initialReason, redirectTo, onAuthenticated }: LoginScreenProps) {
   const { signInWithPassword, adoptReturnedSession } = useAuth();
+  // Easter egg: a different ledger quip on every visit to the sign-in screen.
+  const [phrase] = useState(() => pickLoginPhrase());
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -114,8 +118,14 @@ export function LoginScreen({ initialReason, redirectTo, onAuthenticated }: Logi
   return (
     <main className="flex min-h-dvh items-center justify-center bg-paper px-md">
       <div className="w-(--width-login-column)">
-        <img src="/branding/monogram-mark-light.svg" alt="Billing monogram" width={48} height={48} />
+        <div className="flex items-center gap-sd">
+          <AppLogo size={48} />
+          <span className="text-heading text-ink">{APP_NAME}</span>
+        </div>
         <h1 className="mt-lg text-display text-ink">{SIGN_IN_HEADING}</h1>
+        <p data-testid="login-phrase" className="mt-xs text-caption italic text-ink-secondary">
+          {phrase}
+        </p>
 
         <div className="mt-md" role="region" aria-label="message slot">
           {banner !== null && (

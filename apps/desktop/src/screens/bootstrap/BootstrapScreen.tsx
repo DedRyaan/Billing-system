@@ -7,6 +7,7 @@
 // under the headline while keeping every other visual contract intact.
 
 import { useState, type FormEvent } from "react";
+import { AppLogo } from "../../components/brand/AppLogo";
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
 import type { GoTrueSessionJSON } from "@billing/api/auth";
 import {
@@ -105,7 +106,7 @@ export function BootstrapScreen({
   return (
     <main className="flex min-h-dvh items-center justify-center bg-paper px-md">
       <div className="w-(--width-bootstrap-card) rounded-xl border border-hairline bg-surface p-xl">
-        <img src="/branding/tile-mark-light.svg" alt="Billing tile mark" width={48} height={48} />
+        <AppLogo size={48} />
         <h1 className="mt-lg text-display text-ink">{BOOTSTRAP_HEADING}</h1>
         <p className="mt-sm text-body text-ink-secondary">{BOOTSTRAP_BODY}</p>
 

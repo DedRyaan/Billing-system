@@ -40,6 +40,8 @@ export interface ProfileRow {
   /** Display fields for shell chrome (sidebar footer, Settings). */
   full_name?: string | null;
   email?: string | null;
+  /** Admin-issued temporary password in use: must pick their own first. */
+  must_change_password?: boolean;
 }
 
 interface AuthRouterLike {
@@ -93,6 +95,8 @@ export interface AuthContextValue {
     fn: string,
     opts?: { body?: unknown },
   ) => Promise<{ data: unknown; error: unknown }>;
+  /** Re-read the own profile row (e.g. after clearing must_change_password). */
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -109,7 +113,7 @@ async function fetchOwnProfileRow(client: SupabaseClient): Promise<ProfileRow | 
     if (!data.user) return null;
     const res = await client
       .from("profiles")
-      .select("id,role,is_active,locked_at,full_name,email")
+      .select("id,role,is_active,locked_at,full_name,email,must_change_password")
       .eq("id", data.user.id)
       .maybeSingle();
     return (res.data as ProfileRow | null) ?? null;
@@ -320,6 +324,12 @@ export function AuthProvider({
     [],
   );
 
+  const refreshProfile = useCallback(async () => {
+    const p = phaseRef.current;
+    if (p.status !== "authenticated") return;
+    setProfile(await fetchOwnProfileRow(p.client));
+  }, []);
+
   // Null while restoring (no half-auth transport exposure); otherwise the
   // phase's client - even unauthenticated keeps its (inert) client reference
   // for sign-in retry paths.
@@ -336,8 +346,9 @@ export function AuthProvider({
       signInWithPassword,
       adoptReturnedSession,
       invokeFunction,
+      refreshProfile,
     }),
-    [phase.status, dataClient, session, profile, signOut, signInWithPassword, adoptReturnedSession, invokeFunction],
+    [phase.status, dataClient, session, profile, signOut, signInWithPassword, adoptReturnedSession, invokeFunction, refreshProfile],
   );
 
   return (

@@ -4,6 +4,7 @@
 // ArrowUp/Down rove focus, Enter selects (native button), Esc closes (Radix).
 // Archived items stay SELECTABLE with a read-only caption - D-35/D-36.
 import { useRef, useState } from "react";
+import { AppLogo } from "../components/brand/AppLogo";
 import * as Popover from "@radix-ui/react-popover";
 import { Check, ChevronsUpDown } from "lucide-react";
 import type { BusinessRow } from "@billing/api/businesses";
@@ -66,14 +67,7 @@ export function BusinessSwitcher({
           data-testid="switcher-trigger"
           className="flex h-11 w-full items-center gap-sm rounded-md px-sd text-left transition-colors duration-(--duration-fast) hover:bg-sidebar-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
-          <img
-            src="/branding/tile-mark-light.svg"
-            alt=""
-            aria-hidden="true"
-            width={20}
-            height={20}
-            className="shrink-0 rounded-sm"
-          />
+          <AppLogo size={20} decorative />
           <span
             className="min-w-0 flex-1 truncate text-body text-ink"
             title={active?.legal_name ?? undefined}

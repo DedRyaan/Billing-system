@@ -5,6 +5,7 @@
 // static dev fallback) · the quiet footer note.
 import { useEffect, useState } from "react";
 import { HeaderRow } from "../../shell/HeaderRow";
+import { AppLogo } from "../../components/brand/AppLogo";
 import { Button } from "../../components/ui/Button";
 import { initialsOf } from "../../shell/UserFooter";
 import { Badge } from "../../components/ui/Badge";
@@ -115,7 +116,7 @@ export function SettingsScreen() {
         <section aria-label={SECTION_ABOUT} className="flex flex-col gap-sd">
           <SectionHeading>{SECTION_ABOUT}</SectionHeading>
           <div className="flex items-center gap-sm" data-testid="about-block">
-            <img src="/branding/tile-mark-light.svg" alt="" width={20} height={20} aria-hidden="true" />
+            <AppLogo size={20} decorative />
             <span className="text-body text-ink">{ABOUT_APP_NAME}</span>
             <span className="text-caption text-ink-secondary" data-testid="about-version">
               {aboutVersionLabel(version)}

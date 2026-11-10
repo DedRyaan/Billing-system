@@ -10,6 +10,7 @@ import { BusinessSwitcher } from "../shell/BusinessSwitcher";
 import { OfflineBanner } from "../shell/OfflineBanner";
 import { ToastHost } from "../shell/ToastHost";
 import { ARCHIVED_BANNER } from "../lib/strings/shell";
+import { SetPasswordScreen } from "../screens/login/SetPasswordScreen";
 
 // Root frame (plan 03-06): unauthenticated surfaces render bare; the
 // authenticated app mounts the FULL chrome - sidebar with business switcher,
@@ -30,7 +31,11 @@ function RootLayout() {
   // chrome-free.
   return (
     <div data-shell-root>
-      {auth.status === "authenticated" && auth.client !== null ? (
+      {auth.status === "authenticated" && auth.client !== null && auth.profile?.must_change_password === true ? (
+        // Temporary (admin-issued) password: choose their own before any
+        // business data or chrome renders.
+        <SetPasswordScreen />
+      ) : auth.status === "authenticated" && auth.client !== null ? (
         <ActiveBusinessProvider dataClient={auth.client} router={routerAdapter}>
           <AuthenticatedShell navigate={(to) => void routerAdapter.navigate({ to })} />
         </ActiveBusinessProvider>

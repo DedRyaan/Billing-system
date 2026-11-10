@@ -47,4 +47,40 @@ export const REACTIVATE_BUTTON = "Reactivate…";
  * COVERAGE OPT-OUT).
  */
 
+// Add staff + password reset (one-time temporary passwords).
+export const ADD_STAFF_BUTTON = "Add staff";
+export const ADD_STAFF_SHEET_TITLE = "Add staff member";
+export const ADD_STAFF_SHEET_SUBTITLE =
+  "They'll get a temporary password from you and choose their own at first sign-in.";
+export const ADD_STAFF_NAME_LABEL = "Full name";
+export const ADD_STAFF_EMAIL_LABEL = "Email";
+export const ADD_STAFF_BUSINESSES_LABEL = "Businesses they can bill for";
+export const ADD_STAFF_CREATED_TITLE = "Staff member added";
+export const RESET_PASSWORD_BUTTON = "Reset password…";
+export const resetPasswordConfirmTitle = (name: string): string => `Reset ${name}'s password?`;
+export const RESET_PASSWORD_CONFIRM_BODY =
+  "Their current password stops working. You'll get a temporary one to share, and they'll choose a new password when they sign in.";
+export const RESET_PASSWORD_CONFIRM_VERB = "Reset password";
+export const RESET_PASSWORD_DONE_TITLE = "Password reset";
+export const TEMP_PASSWORD_BODY =
+  "Share these details privately. The temporary password is shown only once — they'll be asked to set their own when they sign in.";
+export const TEMP_PASSWORD_COPY = "Copy login details";
+export const TEMP_PASSWORD_COPIED = "Copied";
+export const TEMP_PASSWORD_DONE = "Done";
+
+/** The message an admin pastes into WhatsApp/SMS. */
+export function loginDetailsMessage(args: {
+  appName: string;
+  name: string;
+  email: string;
+  password: string;
+}): string {
+  return [
+    `Hi ${args.name}, here are your ${args.appName} login details:`,
+    `Email: ${args.email}`,
+    `Temporary password: ${args.password}`,
+    "You'll be asked to choose your own password when you sign in.",
+  ].join("\n");
+}
+
 export { RETRY };

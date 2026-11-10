@@ -23,6 +23,7 @@ import {
   deactivateStaff,
   listRosterForAdmin,
   reactivateStaff,
+  resetStaffPassword,
   setMembership,
 } from "@billing/api/memberships";
 import { listBusinesses, type BusinessRow } from "@billing/api/businesses";
@@ -34,8 +35,12 @@ import { Sheet } from "../../components/ui/Sheet";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
 import { Button } from "../../components/ui/Button";
 import { ToggleChip } from "../../components/ui/ToggleChip";
-import { showMutationFailure } from "../../shell/toast-store";
+import { showMutationFailure, showToast } from "../../shell/toast-store";
+import { AddStaffSheet, type CreatedStaff } from "./AddStaffSheet";
+import { TempPasswordDialog } from "./TempPasswordDialog";
 import {
+  ADD_STAFF_BUTTON,
+  ADD_STAFF_CREATED_TITLE,
   ARCHIVED_CHIP_SUFFIX,
   COL_BUSINESSES,
   COL_PERSON,
@@ -52,6 +57,11 @@ import {
   REACTIVATE_CONFIRM_BODY,
   reactivateConfirmTitle,
   REACTIVATE_CONFIRM_VERB,
+  RESET_PASSWORD_BUTTON,
+  RESET_PASSWORD_CONFIRM_BODY,
+  RESET_PASSWORD_CONFIRM_VERB,
+  RESET_PASSWORD_DONE_TITLE,
+  resetPasswordConfirmTitle,
   ROLE_BADGE_ADMIN,
   ROLE_BADGE_STAFF,
   STATUS_ACTIVE,
@@ -92,7 +102,10 @@ function summarizeAssignments(names: string[]): string {
 }
 
 export function TeamSection({ client }: TeamSectionProps) {
+  const queryClient = useQueryClient();
   const [openPerson, setOpenPerson] = useState<EnrichedProfile | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [created, setCreated] = useState<CreatedStaff | null>(null);
 
   const roster = useQuery({
     queryKey: keysFor.membershipsRoster(),
@@ -156,6 +169,13 @@ export function TeamSection({ client }: TeamSectionProps) {
         isError={roster.isError}
         onRetry={() => void roster.refetch()}
         searchPlaceholder={TEAM_SEARCH_PLACEHOLDER}
+        primaryAction={
+          client !== null ? (
+            <Button type="button" onClick={() => setAddOpen(true)}>
+              {ADD_STAFF_BUTTON}
+            </Button>
+          ) : undefined
+        }
         getRowClassName={(vm) => (vm.status_label === STATUS_DEACTIVATED ? "opacity-50" : "")}
         onRowActivate={(vm) => {
           const person = rows.find((r) => r.id === vm.id);
@@ -164,6 +184,28 @@ export function TeamSection({ client }: TeamSectionProps) {
       />
       {openPerson !== null && client !== null && (
         <PersonSheet open onClose={() => setOpenPerson(null)} client={client} person={openPerson} />
+      )}
+      {client !== null && (
+        <AddStaffSheet
+          open={addOpen}
+          onClose={() => setAddOpen(false)}
+          client={client}
+          onCreated={(c) => {
+            setAddOpen(false);
+            setCreated(c);
+            void queryClient.invalidateQueries({ queryKey: keysFor.membershipsRoster() });
+          }}
+        />
+      )}
+      {created !== null && (
+        <TempPasswordDialog
+          open
+          onClose={() => setCreated(null)}
+          title={ADD_STAFF_CREATED_TITLE}
+          name={created.name}
+          email={created.email}
+          password={created.tempPassword}
+        />
       )}
     </section>
   );
@@ -184,7 +226,8 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
   const queryClient = useQueryClient();
   const [assignedIds, setAssignedIds] = useState<Set<string>>(new Set());
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
-  const [confirm, setConfirm] = useState<"deactivate" | "reactivate" | null>(null);
+  const [confirm, setConfirm] = useState<"deactivate" | "reactivate" | "reset" | null>(null);
+  const [resetPassword, setResetPassword] = useState<string | null>(null);
   const [lifecycleState, setLifecycleState] = useState(person.is_active);
 
   // Accessible-business universe for the chip grid (RLS listing).
@@ -247,6 +290,13 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
     }
   };
 
+  const runReset = async () => {
+    if (!client) return;
+    const res = await resetStaffPassword(client, person.id);
+    if (res.ok) setResetPassword(res.data.tempPassword);
+    else showToast({ variant: "error", message: res.error.message });
+  };
+
   // Peer protection mirror: lifecycle controls exist ONLY for staff targets.
   const isStaffTarget = person.role === "staff";
 
@@ -299,6 +349,18 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
             <p className="mt-sm text-caption text-ink-secondary">{MEMBERSHIP_MICROCOPY}</p>
           </div>
 
+          {/* Password reset - STAFF targets only (same scope as lifecycle). */}
+          {isStaffTarget && lifecycleState && (
+            <div className="flex items-center justify-between border-t border-hairline pt-md">
+              <span className="text-caption text-ink-secondary">
+                Forgot their password? Issue a temporary one.
+              </span>
+              <Button type="button" variant="secondary" onClick={() => setConfirm("reset")}>
+                {RESET_PASSWORD_BUTTON}
+              </Button>
+            </div>
+          )}
+
           {/* Lifecycle actions - STAFF targets only (D-11 scope mirror). */}
           {isStaffTarget && (
             <div className="flex items-center justify-between border-t border-hairline pt-md">
@@ -339,6 +401,24 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
         confirmLabel={REACTIVATE_CONFIRM_VERB}
         onConfirm={() => void runLifecycle("reactivate")}
       />
+      <ConfirmDialog
+        open={confirm === "reset"}
+        onOpenChange={(o) => setConfirm(o ? "reset" : null)}
+        title={resetPasswordConfirmTitle(person.full_name)}
+        body={RESET_PASSWORD_CONFIRM_BODY}
+        confirmLabel={RESET_PASSWORD_CONFIRM_VERB}
+        onConfirm={() => void runReset()}
+      />
+      {resetPassword !== null && (
+        <TempPasswordDialog
+          open
+          onClose={() => setResetPassword(null)}
+          title={RESET_PASSWORD_DONE_TITLE}
+          name={person.full_name}
+          email={person.email}
+          password={resetPassword}
+        />
+      )}
     </>
   );
 }

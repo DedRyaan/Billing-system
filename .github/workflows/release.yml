@@ -1,7 +1,7 @@
 # Builds the Windows installer and publishes it as a GitHub Release.
 #
 # Trigger: push a tag like v0.1.0 (or run manually from the Actions tab).
-# Output: Billing_<version>_x64-setup.exe attached to the release — a
+# Output: Bahi_<version>_x64-setup.exe attached to the release — a
 # per-user NSIS installer (no admin prompt) that bundles the WebView2
 # bootstrapper, so end users just download, run, and sign in.
 #
@@ -69,12 +69,12 @@ jobs:
           projectPath: apps/desktop
           tauriScript: pnpm tauri
           tagName: v__VERSION__
-          releaseName: Billing v__VERSION__
+          releaseName: Bahi v__VERSION__
           releaseBody: |
             ## Install
             1. Download the file ending in **_x64-setup.exe** from the Assets below.
             2. Run it. It installs for your Windows user only — no administrator password needed.
-            3. Open **Billing** from the Start menu and sign in with the email and password your admin gave you.
+            3. Open **Bahi** from the Start menu and sign in with the email and password your admin gave you.
 
             Windows may show "Windows protected your PC" because the installer is not code-signed yet: click **More info → Run anyway**.
           releaseDraft: false
