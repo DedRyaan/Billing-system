@@ -231,18 +231,15 @@ otp_expiry = 3600
 
 # Sign-in and password-reset emails carry a code ({{ .Token }}) AND an app
 # link ({{ .ConfirmationURL }} verifies, then redirects to bahi://auth/callback).
-#
-# Supabase's free plan refuses template changes while its built-in email
-# sender is used. After configuring custom SMTP (Dashboard > Authentication >
-# Emails > SMTP Settings), uncomment these four sections and run
-# `supabase config push`.
-# [auth.email.template.magic_link]
-# subject = "Your Bahi sign-in code"
-# content_path = "./supabase/templates/magic_link.html"
-#
-# [auth.email.template.recovery]
-# subject = "Reset your Bahi password"
-# content_path = "./supabase/templates/recovery.html"
+# Requires custom SMTP on the hosted project (Resend, set in the dashboard):
+# the free plan rejects template changes on Supabase's built-in sender.
+[auth.email.template.magic_link]
+subject = "Your Bahi sign-in code"
+content_path = "./supabase/templates/magic_link.html"
+
+[auth.email.template.recovery]
+subject = "Reset your Bahi password"
+content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize email template
 # [auth.email.template.invite]
