@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { LoaderCircle } from "lucide-react";
 import { getStateEntry, validateGstin } from "@billing/gst";
 import { embedGstinLookup, GSTIN_LOOKUP_KEY } from "@billing/api/customers";
-import { Field } from "../../components/ui/Field";
+import { Field, focusFirstInvalid } from "../../components/ui/Field";
 import { Input, TextArea } from "../../components/ui/Input";
 import { Sheet } from "../../components/ui/Sheet";
 import { StatePicker } from "../../components/ui/StatePicker";
@@ -204,11 +204,21 @@ export function CustomerSheet({
 
   const handleSubmit = async () => {
     if (submitting) return;
-    if (values.legal_name.trim().length === 0) {
-      setErrors((e) => ({ ...e, legal_name: nameRequiredCaption }));
+    const missingName = values.legal_name.trim().length === 0;
+    const missingState = values.state_code.length === 0;
+    if (missingName || missingState) {
+      setErrors((e) => ({
+        ...e,
+        ...(missingName ? { legal_name: nameRequiredCaption } : {}),
+        ...(missingState ? { state_code: "Pick the customer's state (it decides CGST+SGST or IGST)." } : {}),
+      }));
+      focusFirstInvalid();
       return;
     }
-    if (!formValid) return;
+    if (!formValid) {
+      focusFirstInvalid();
+      return;
+    }
 
     const gstinUpper = values.gstinInput.trim().toUpperCase();
     const hasAddress =
@@ -273,7 +283,7 @@ export function CustomerSheet({
       title={mode === "create" ? SHEET_CREATE_TITLE : SHEET_EDIT_TITLE}
       dirty={JSON.stringify(values) !== JSON.stringify({ ...EMPTY_DRAFT, gstinInput: "", legal_name: initial?.name ?? "" })}
       onSave={() => void handleSubmit()}
-      saveDisabled={!formValid || submitting}
+      saveDisabled={submitting}
     >
       <div className="flex flex-col gap-sd">
         <Field id="cust-legal-name" label={FIELD_NAME} error={errors["legal_name"]}>
@@ -324,7 +334,7 @@ export function CustomerSheet({
         </Field>
 
         <div className="grid grid-cols-2 gap-sd">
-          <Field id="cust-state" label={FIELD_STATE}>
+          <Field id="cust-state" label={FIELD_STATE} error={errors["state_code"]}>
             {/* IN-02: UI-SPEC Component Contracts - the state field is the
                 type-to-filter StatePicker combobox, not a raw Select. Picking
                 marks the field touched for the prefill dirty-field guard. */}
@@ -333,6 +343,7 @@ export function CustomerSheet({
               onPick={(entry) => {
                 touchedRef.current.add("state_code");
                 setValues((s) => ({ ...s, state_code: entry.code }));
+                setErrors((e) => ({ ...e, state_code: undefined }));
               }}
               placeholder={STATE_PICK_PLACEHOLDER}
             />

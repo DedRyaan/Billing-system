@@ -78,8 +78,10 @@ describe("validateBusinessForm", () => {
     expect(validateBusinessForm({ ...validBase, pincode: "411001" }).errors["pincode"]).toBeUndefined();
   });
 
-  it("phone tolerates digits/spaces and normalizes to 10 digits; rejects other shapes", () => {
-    expect(validateBusinessForm({ ...validBase, phone: "+91 98765 43210" }).errors["phone"]).toBeTruthy();
+  it("phone tolerates digits/spaces/+91 and normalizes to 10 digits; rejects other shapes", () => {
+    expect(validateBusinessForm({ ...validBase, phone: "+91 98765 43210" }).normalized!.phone).toBe("9876543210");
+    expect(validateBusinessForm({ ...validBase, phone: "12345" }).errors["phone"]).toBeTruthy();
+    expect(validateBusinessForm({ ...validBase, phone: "+44 20 7946 0958" }).errors["phone"]).toBeTruthy();
     const ok = validateBusinessForm({ ...validBase, phone: "98765-43210" });
     expect(ok.errors["phone"]).toBeUndefined();
     expect(ok.normalized!.phone).toBe("9876543210");
@@ -139,13 +141,15 @@ describe("BusinessSheet sections", () => {
     expect(document.getElementById("biz-phone")).not.toBeNull();
   });
 
-  it("Save stays disabled while invalid; submits normalized values once valid", async () => {
+  it("Save on an empty form submits nothing; submits normalized values once valid", async () => {
     const user = userEvent.setup();
     const onSubmit = vi.fn(async () => true);
     mountSheet(onSubmit);
 
     const save = screen.getByRole("button", { name: "Save" });
-    expect(save.hasAttribute("disabled")).toBe(true);
+    expect(save.hasAttribute("disabled")).toBe(false);
+    await user.click(save);
+    expect(onSubmit).not.toHaveBeenCalled();
 
     await user.type(screen.getByLabelText("Legal name"), "Alpha Traders Pvt Ltd");
     await user.type(document.getElementById("biz-gstin") as HTMLInputElement, "27AAPFU0939F1ZV");

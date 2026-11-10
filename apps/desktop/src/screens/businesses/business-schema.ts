@@ -58,9 +58,17 @@ const mechanicalSchema = z.object({
   number_format: z.enum(NUMBER_FORMATS),
 });
 
-/** Digits/spaces tolerated; normalized to a bare 10-digit string. */
+/**
+ * Spaces, dashes and brackets tolerated, and the ways Indian numbers are
+ * usually written (+91 / 91 country code, leading 0 trunk prefix);
+ * normalized to a bare 10-digit string.
+ */
 export function normalizePhone(raw: string): string {
-  return raw.replace(/[\s()-]/g, "");
+  const compact = raw.replace(/[\s().-]/g, "");
+  const digits = compact.replace(/^\+/, "");
+  if (/^91\d{10}$/.test(digits)) return digits.slice(2);
+  if (/^0\d{10}$/.test(digits)) return digits.slice(1);
+  return compact;
 }
 
 /**

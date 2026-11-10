@@ -9,7 +9,7 @@ import { useMemo, useState } from "react";
 import { Sheet } from "../../components/ui/Sheet";
 import { Button } from "../../components/ui/Button";
 import { ConfirmDialog } from "../../components/ui/ConfirmDialog";
-import { Field } from "../../components/ui/Field";
+import { Field, focusFirstInvalid } from "../../components/ui/Field";
 import { Input } from "../../components/ui/Input";
 import { MoneyInput } from "../../components/ui/MoneyInput";
 import { Select } from "../../components/ui/Select";
@@ -107,17 +107,15 @@ export function ItemSheet({
       ? null
       : warning;
 
-  const formValid =
-    !readOnly &&
-    Object.values(errors).every((v) => v === undefined) &&
-    validateCatalogForm(values).normalized !== null;
-
   const handleSubmit = async () => {
     if (readOnly || submitting) return;
     const result = validateCatalogForm(values);
     setErrors(result.errors);
     setWarning(result.warnings["hsn_sac"] ?? null);
-    if (result.normalized === null) return;
+    if (result.normalized === null) {
+      focusFirstInvalid();
+      return;
+    }
     setSubmitting(true);
     try {
       await onSubmit(result.normalized);
@@ -154,7 +152,7 @@ export function ItemSheet({
         subtitle={readOnly ? READONLY_NOTE : undefined}
         dirty={dirty && !readOnly}
         onSave={() => void handleSubmit()}
-        saveDisabled={!formValid || submitting}
+        saveDisabled={readOnly || submitting}
         {...(readOnly ? { readOnly: true } : {})}
         {...(footerLeft !== undefined ? { footerLeft } : {})}
       >

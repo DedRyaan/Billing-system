@@ -69,7 +69,8 @@ describe("validation truth", () => {
 
   it("a structurally-invalid GSTIN blocks with the specific caption ending in the generic line", async () => {
     const user = userEvent.setup();
-    mount({});
+    const onSubmitSpy = vi.fn(async (_v: unknown) => true);
+    mount({ onSubmit: onSubmitSpy });
     await user.type(screen.getByLabelText("Legal name*"), "Ravi");
     await user.type(document.getElementById("cust-state") as HTMLInputElement, "Maharashtra");
     await user.keyboard("{Enter}");
@@ -79,7 +80,19 @@ describe("validation truth", () => {
         "Enter a valid 15-character GSTIN.",
       );
     });
-    expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
+    // Save stays clickable but refuses while the GSTIN is invalid.
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(onSubmitSpy).not.toHaveBeenCalled();
+  });
+
+  it("a missing state is called out instead of silently blocking Save", async () => {
+    const user = userEvent.setup();
+    const onSubmitSpy = vi.fn(async (_v: unknown) => true);
+    mount({ onSubmit: onSubmitSpy });
+    await user.type(screen.getByLabelText("Legal name*"), "Ravi");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText(/Pick the customer's state/)).toBeInTheDocument();
+    expect(onSubmitSpy).not.toHaveBeenCalled();
   });
 });
 

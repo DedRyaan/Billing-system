@@ -43,3 +43,17 @@ export function Field({ id, label, helper, error, children }: FieldProps) {
     </div>
   );
 }
+
+/**
+ * After a Save click on an invalid form: once the error captions render,
+ * scroll to and focus the first invalid control in the open sheet. Sheets
+ * keep Save clickable so a person is never left with a greyed-out button
+ * and no idea why.
+ */
+export function focusFirstInvalid(): void {
+  requestAnimationFrame(() => {
+    const first = document.querySelector<HTMLElement>('[role="dialog"] [aria-invalid="true"]');
+    first?.scrollIntoView?.({ block: "center" });
+    first?.focus();
+  });
+}

@@ -9,7 +9,7 @@
 // controls disable in edit mode.
 import { useEffect, useMemo, useState } from "react";
 import { RadioCardGroup } from "../../components/ui/RadioCardGroup";
-import { Field } from "../../components/ui/Field";
+import { Field, focusFirstInvalid } from "../../components/ui/Field";
 import { Input, TextArea } from "../../components/ui/Input";
 import { Sheet } from "../../components/ui/Sheet";
 import { Button } from "../../components/ui/Button";
@@ -91,7 +91,9 @@ const EMPTY: BusinessFormValues = {
   email: "",
   registration_type: "regular",
   number_format: "prefix_fy_seq",
-  prefix: "",
+  // Pre-filled: the numbering template needs a prefix, and an empty
+  // required field at the bottom of a long sheet is easy to miss.
+  prefix: "INV",
 };
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
@@ -114,6 +116,9 @@ export function BusinessSheet({
   const [values, setValues] = useState<BusinessFormValues>({ ...EMPTY, ...initial });
   const [errors, setErrors] = useState<BusinessFormErrors>({});
   const [submitting, setSubmitting] = useState(false);
+  // Set by a Save click on an invalid form: errors stay visible and the
+  // summary line counts what's left to fix.
+  const [attempted, setAttempted] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const readOnly = mode === "detail";
   const editLocked = mode === "edit"; // GSTIN/tax-config are create-only facts
@@ -143,11 +148,9 @@ export function BusinessSheet({
     }));
   }, [values.gstin, readOnly]);
 
-  // Save stays disabled while the WHOLE form is invalid or in flight.
-  const formValid =
-    !readOnly &&
-    Object.values(errors).every((v) => v === undefined) &&
-    validateBusinessForm(values).normalized !== null;
+  // Save is never silently disabled: an invalid form still accepts the
+  // click, which reveals every problem and focuses the first one.
+  const openErrors = Object.values(errors).filter((v) => v !== undefined).length;
 
   const fy = currentFinancialYearLabel();
 
@@ -163,7 +166,11 @@ export function BusinessSheet({
     if (readOnly || submitting) return;
     const result = validateBusinessForm(values);
     setErrors(result.errors);
-    if (result.normalized === null) return;
+    if (result.normalized === null) {
+      setAttempted(true);
+      focusFirstInvalid();
+      return;
+    }
     setSubmitting(true);
     try {
       const ok = await onSubmit(result.normalized);
@@ -196,11 +203,17 @@ export function BusinessSheet({
       subtitle={readOnly ? SHEET_DETAIL_SUBTITLE : undefined}
       dirty={dirty && !readOnly}
       onSave={() => void handleSubmit()}
-      saveDisabled={!formValid || submitting}
+      saveDisabled={readOnly || submitting}
       {...(readOnly ? { readOnly: true } : {})}
       {...(archiveFooter !== undefined ? { footerLeft: archiveFooter } : {})}
     >
       <div className="flex flex-col gap-xl">
+        {attempted && openErrors > 0 && (
+          <p role="status" className="rounded-md bg-danger-subtle px-sd py-sm text-body text-danger">
+            {openErrors === 1 ? "1 field needs attention" : `${openErrors} fields need attention`} before
+            this business can be saved.
+          </p>
+        )}
         {/* IDENTITY */}
         <section className="flex flex-col gap-sd">
           <SectionLabel>{SECTION_IDENTITY}</SectionLabel>

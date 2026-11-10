@@ -80,9 +80,15 @@ describe("soft vs hard gates", () => {
     await waitFor(() => expect(onSubmit).toHaveBeenCalledTimes(1));
   });
 
-  it("missing hard fields keep Save disabled", () => {
-    mount({});
-    expect(screen.getByRole("button", { name: "Save" }).hasAttribute("disabled")).toBe(true);
+  it("missing hard fields block the save and say why", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn(async () => true);
+    mount({ onSubmit });
+    const save = screen.getByRole("button", { name: "Save" });
+    expect(save.hasAttribute("disabled")).toBe(false);
+    await user.click(save);
+    expect(onSubmit).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.querySelector('[aria-invalid="true"]')).not.toBeNull());
   });
 });
 
