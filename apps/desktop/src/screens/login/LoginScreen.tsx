@@ -4,7 +4,9 @@
 //   * credential failures render GENERIC_CREDENTIALS_MESSAGE imported from
 //     @billing/api/errors - NEVER re-typed here;
 //   * ?reason= banners come from strings/global verbatim;
-//   * zero signup language, no links, no logo wall.
+//   * zero signup language, no logo wall;
+//   * "Forgot password?" and "Email me a sign-in link" swap the form for
+//     EmailAuthPanel (link + code emails) - never a separate route.
 // Geometry: centered 360px column on paper; app logo 48px + rotating quip; Display headline;
 // full-width primary CTA h36; footer caption exact.
 
@@ -26,9 +28,14 @@ import {
   NETWORK_FAILURE_MESSAGE,
   SIGN_IN_HEADING,
   SIGNING_IN,
+  EMAIL_SIGN_IN_HEADING,
+  EMAIL_SIGN_IN_LINK,
+  FORGOT_PASSWORD_LINK,
+  RESET_HEADING,
 } from "../../lib/strings/login";
 import { useAuth } from "../../auth/AuthProvider";
 import { CapsLockHint } from "./CapsLockHint";
+import { EmailAuthPanel, type EmailAuthMode } from "./EmailAuthPanel";
 
 export type LoginBannerTone = "warning" | "danger" | "info";
 
@@ -64,7 +71,8 @@ const inputClasses =
   "h-(--control-md) w-full rounded-md border border-hairline-strong bg-surface px-sd text-body text-ink placeholder:text-ink-muted focus:border-accent focus:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 transition-colors duration-(--duration-fast)";
 
 export function LoginScreen({ initialReason, redirectTo, onAuthenticated }: LoginScreenProps) {
-  const { signInWithPassword, adoptReturnedSession } = useAuth();
+  const { signInWithPassword, adoptReturnedSession, linkNotice } = useAuth();
+  const [mode, setMode] = useState<"password" | EmailAuthMode>("password");
   // Easter egg: a different ledger quip on every visit to the sign-in screen.
   const [phrase] = useState(() => pickLoginPhrase());
   const [email, setEmail] = useState("");
@@ -76,13 +84,10 @@ export function LoginScreen({ initialReason, redirectTo, onAuthenticated }: Logi
   const [networkFailure, setNetworkFailure] = useState(false);
   const [capsLockOn, setCapsLockOn] = useState(false);
 
-  const trackCapsLock = (
-    e: KeyboardEvent<HTMLInputElement> | FocusEvent<HTMLInputElement>,
-  ) => {
+  const trackCapsLock = (e: KeyboardEvent<HTMLInputElement> | FocusEvent<HTMLInputElement>) => {
     // Structural probe: keyboard events expose getModifierState, focus events
     // may not - and jsdom lacks it entirely, so headless environments no-op.
-    const gms = (e as unknown as { getModifierState?: (k: string) => boolean })
-      .getModifierState;
+    const gms = (e as unknown as { getModifierState?: (k: string) => boolean }).getModifierState;
     setCapsLockOn(typeof gms === "function" && gms.call(e, "CapsLock"));
   };
 
@@ -114,6 +119,13 @@ export function LoginScreen({ initialReason, redirectTo, onAuthenticated }: Logi
   };
 
   const ctaLabel = networkFailure ? CTA_TRY_AGAIN : SIGN_IN_HEADING;
+  const heading =
+    mode === "magic" ? EMAIL_SIGN_IN_HEADING : mode === "reset" ? RESET_HEADING : SIGN_IN_HEADING;
+  // A failed email link (expired/used) outranks the ?reason= banner.
+  const shownBanner: Banner | null =
+    typeof linkNotice === "string" ? { tone: "warning", copy: linkNotice } : banner;
+  const textButtonClasses =
+    "cursor-pointer text-caption text-accent hover:text-accent-hover hover:underline";
 
   return (
     <main className="flex min-h-dvh items-center justify-center bg-paper px-md">
@@ -122,82 +134,123 @@ export function LoginScreen({ initialReason, redirectTo, onAuthenticated }: Logi
           <AppLogo size={48} />
           <span className="text-heading text-ink">{APP_NAME}</span>
         </div>
-        <h1 className="mt-lg text-display text-ink">{SIGN_IN_HEADING}</h1>
-        <p data-testid="login-phrase" className="mt-xs text-caption italic text-ink-secondary">
-          {phrase}
-        </p>
+        <h1 className="mt-lg text-display text-ink">{heading}</h1>
+        {mode === "password" && (
+          <p data-testid="login-phrase" className="mt-xs text-caption italic text-ink-secondary">
+            {phrase}
+          </p>
+        )}
 
         <div className="mt-md" role="region" aria-label="message slot">
-          {banner !== null && (
+          {shownBanner !== null && (mode === "password" || shownBanner !== banner) && (
             <p
               role="alert"
-              data-tone={banner.tone}
+              data-tone={shownBanner.tone}
               className={
-                banner.tone === "danger"
+                shownBanner.tone === "danger"
                   ? "rounded-md bg-danger-subtle px-sd py-sm text-body text-danger"
-                  : banner.tone === "warning"
+                  : shownBanner.tone === "warning"
                     ? "rounded-md bg-warning-subtle px-sd py-sm text-body text-warning"
                     : "rounded-md bg-accent-subtle px-sd py-sm text-body text-accent-hover"
               }
             >
-              {banner.copy}
+              {shownBanner.copy}
             </p>
           )}
         </div>
 
-        <form onSubmit={(e) => void onSubmit(e)} className="mt-md flex flex-col gap-sd" noValidate>
-          <div>
-            <label htmlFor="login-email" className="mb-xs block text-caption text-ink-secondary">
-              {FIELD_EMAIL}
-            </label>
-            <input
-              id="login-email"
-              name="email"
-              type="email"
-              autoComplete="email"
-              required
-              disabled={submitting}
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className={inputClasses}
-            />
-          </div>
-          <div>
-            <label htmlFor="login-password" className="mb-xs block text-caption text-ink-secondary">
-              {FIELD_PASSWORD}
-            </label>
-            <input
-              id="login-password"
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              disabled={submitting}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              onKeyDown={trackCapsLock}
-              onKeyUp={trackCapsLock}
-              onFocus={trackCapsLock}
-              aria-invalid={banner?.tone === "danger" || undefined}
-              className={inputClasses}
-            />
-            <CapsLockHint active={capsLockOn} />
-          </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="mt-sm inline-flex h-(--control-lg) w-full items-center justify-center gap-xs rounded-md bg-accent text-body font-semibold text-white transition-colors duration-(--duration-fast) hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
-          >
-            {submitting ? (
-              <>
-                <LoaderCircle size={14} aria-hidden="true" className="animate-spin" />
-                {SIGNING_IN}
-              </>
-            ) : (
-              ctaLabel
-            )}
-          </button>
-        </form>
+        {mode !== "password" ? (
+          <EmailAuthPanel
+            key={mode}
+            mode={mode}
+            initialEmail={email}
+            onBack={(typed) => {
+              setEmail(typed);
+              setMode("password");
+            }}
+            onAuthenticated={() => onAuthenticated(redirectTo ?? "/dashboard")}
+          />
+        ) : (
+          <>
+            <form
+              onSubmit={(e) => void onSubmit(e)}
+              className="mt-md flex flex-col gap-sd"
+              noValidate
+            >
+              <div>
+                <label
+                  htmlFor="login-email"
+                  className="mb-xs block text-caption text-ink-secondary"
+                >
+                  {FIELD_EMAIL}
+                </label>
+                <input
+                  id="login-email"
+                  name="email"
+                  type="email"
+                  autoComplete="email"
+                  required
+                  disabled={submitting}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className={inputClasses}
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="login-password"
+                  className="mb-xs block text-caption text-ink-secondary"
+                >
+                  {FIELD_PASSWORD}
+                </label>
+                <input
+                  id="login-password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                  disabled={submitting}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={trackCapsLock}
+                  onKeyUp={trackCapsLock}
+                  onFocus={trackCapsLock}
+                  aria-invalid={banner?.tone === "danger" || undefined}
+                  className={inputClasses}
+                />
+                <CapsLockHint active={capsLockOn} />
+                <div className="mt-xs flex justify-end">
+                  <button
+                    type="button"
+                    className={textButtonClasses}
+                    onClick={() => setMode("reset")}
+                  >
+                    {FORGOT_PASSWORD_LINK}
+                  </button>
+                </div>
+              </div>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="mt-sm inline-flex h-(--control-lg) w-full items-center justify-center gap-xs rounded-md bg-accent text-body font-semibold text-white transition-colors duration-(--duration-fast) hover:bg-accent-hover disabled:pointer-events-none disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
+              >
+                {submitting ? (
+                  <>
+                    <LoaderCircle size={14} aria-hidden="true" className="animate-spin" />
+                    {SIGNING_IN}
+                  </>
+                ) : (
+                  ctaLabel
+                )}
+              </button>
+            </form>
+            <div className="mt-md text-center">
+              <button type="button" className={textButtonClasses} onClick={() => setMode("magic")}>
+                {EMAIL_SIGN_IN_LINK}
+              </button>
+            </div>
+          </>
+        )}
 
         <p className="mt-xl text-center text-caption text-ink-secondary">{FOOTER_CAPTION}</p>
       </div>

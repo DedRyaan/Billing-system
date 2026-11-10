@@ -1,7 +1,8 @@
 // SetPasswordScreen - shown instead of the app shell while the signed-in
-// profile carries must_change_password (admin-issued temporary password).
-// The person picks their own password; on success the flag clears and the
-// profile refresh lets the shell render.
+// profile carries must_change_password (admin-issued temporary password), or
+// after signing in from a password-reset email. The person picks their own
+// password; on success the flag clears and the profile refresh lets the
+// shell render.
 import { useState, type FormEvent } from "react";
 import { LoaderCircle } from "lucide-react";
 import { setOwnPassword } from "@billing/api/memberships";
@@ -19,6 +20,10 @@ export function SetPasswordScreen() {
   const [saving, setSaving] = useState(false);
 
   const firstName = (auth.profile?.full_name ?? "").split(" ")[0] ?? "";
+  // A reset-email session takes precedence in the copy: the person asked for
+  // this, they did not just sign in with a temporary password.
+  const recovery = auth.passwordRecovery && auth.profile?.must_change_password !== true;
+  const accountEmail = auth.profile?.email ?? null;
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -40,6 +45,7 @@ export function SetPasswordScreen() {
       return;
     }
     await auth.refreshProfile();
+    auth.endPasswordRecovery();
     setSaving(false);
   };
 
@@ -49,11 +55,20 @@ export function SetPasswordScreen() {
     <main className="flex min-h-dvh items-center justify-center bg-paper px-md">
       <div className="w-(--width-login-column)">
         <AppLogo size={48} />
-        <h1 className="mt-lg text-display text-ink">Choose your password</h1>
-        <p className="mt-xs text-body text-ink-secondary">
-          {firstName !== "" ? `Welcome, ${firstName}. ` : ""}You signed in with a temporary password.
-          Pick one only you know to continue.
-        </p>
+        <h1 className="mt-lg text-display text-ink">
+          {recovery ? "Choose a new password" : "Choose your password"}
+        </h1>
+        {recovery ? (
+          <p className="mt-xs text-body text-ink-secondary">
+            {accountEmail !== null ? `Set a new password for ${accountEmail}. ` : ""}
+            You'll use it the next time you sign in.
+          </p>
+        ) : (
+          <p className="mt-xs text-body text-ink-secondary">
+            {firstName !== "" ? `Welcome, ${firstName}. ` : ""}You signed in with a temporary password.
+            Pick one only you know to continue.
+          </p>
+        )}
 
         {error !== null && (
           <p role="alert" className="mt-md rounded-md bg-danger-subtle px-sd py-sm text-body text-danger">

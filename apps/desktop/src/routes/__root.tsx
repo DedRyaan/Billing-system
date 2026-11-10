@@ -31,9 +31,11 @@ function RootLayout() {
   // chrome-free.
   return (
     <div data-shell-root>
-      {auth.status === "authenticated" && auth.client !== null && auth.profile?.must_change_password === true ? (
-        // Temporary (admin-issued) password: choose their own before any
-        // business data or chrome renders.
+      {auth.status === "authenticated" &&
+      auth.client !== null &&
+      (auth.profile?.must_change_password === true || auth.passwordRecovery) ? (
+        // Temporary (admin-issued) password, or signed in from a password-reset
+        // email: choose a password before any business data or chrome renders.
         <SetPasswordScreen />
       ) : auth.status === "authenticated" && auth.client !== null ? (
         <ActiveBusinessProvider dataClient={auth.client} router={routerAdapter}>

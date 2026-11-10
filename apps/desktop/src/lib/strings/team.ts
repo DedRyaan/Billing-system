@@ -62,6 +62,14 @@ export const RESET_PASSWORD_CONFIRM_BODY =
   "Their current password stops working. You'll get a temporary one to share, and they'll choose a new password when they sign in.";
 export const RESET_PASSWORD_CONFIRM_VERB = "Reset password";
 export const RESET_PASSWORD_DONE_TITLE = "Password reset";
+export const RESET_PASSWORD_HINT = "Forgot their password? Email them a reset link, or issue a temporary one.";
+export const SEND_RESET_EMAIL_BUTTON = "Email reset link";
+export const SENDING_RESET_EMAIL = "Sending…";
+export const resetEmailSent = (email: string): string =>
+  `Password-reset email sent to ${email}. The link and code in it work for one hour.`;
+export const RESET_EMAIL_RATE_LIMITED =
+  "Too many emails sent just now. Wait a few minutes, then try again.";
+export const RESET_EMAIL_NETWORK = "Couldn't reach the server. Check your connection and try again.";
 export const TEMP_PASSWORD_BODY =
   "Share these details privately. The temporary password is shown only once — they'll be asked to set their own when they sign in.";
 export const TEMP_PASSWORD_COPY = "Copy login details";

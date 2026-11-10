@@ -25,7 +25,10 @@ import {
 import { createBillingClient } from "@billing/api/client";
 import { resolveSessionStorage } from "@billing/api/session-storage";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { parseAuthCallbackUrl } from "@billing/api/email-auth";
 import { readBillingEnv } from "../lib/env";
+import { showToast } from "../shell/toast-store";
+import { listenForDeepLinks } from "./deepLinks";
 import { setBootstrapState, setSessionState } from "../lib/session-seam";
 import {
   startAuthFailureInterceptor,
@@ -97,7 +100,26 @@ export interface AuthContextValue {
   ) => Promise<{ data: unknown; error: unknown }>;
   /** Re-read the own profile row (e.g. after clearing must_change_password). */
   refreshProfile: () => Promise<void>;
+  /**
+   * Signed in through a password-reset email (link or code): the app shows
+   * the choose-a-new-password screen until endPasswordRecovery().
+   */
+  passwordRecovery: boolean;
+  /** Adopt a session from an email code; recovery sessions open the reset screen. */
+  adoptEmailSession: (
+    sessionJson: GoTrueSessionJSON,
+    opts: { recovery: boolean },
+  ) => Promise<{ ok: boolean; reason?: string }>;
+  endPasswordRecovery: () => void;
+  /** Message for the sign-in screen about an email link that failed. */
+  linkNotice: string | null;
+  clearLinkNotice: () => void;
 }
+
+export const EXPIRED_LINK_NOTICE =
+  "That email link has expired or was already used. Request a new one, or type the code from the email.";
+const OTHER_ACCOUNT_LINK_NOTICE =
+  "That email link is for a different account. Sign out first, then open the link again.";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -172,6 +194,8 @@ export function AuthProvider({
   const [phase, setPhase] = useState<Phase>({ status: "restoring" });
   const [session, setSession] = useState<GoTrueSessionJSON | null>(null);
   const [profile, setProfile] = useState<ProfileRow | null>(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(false);
+  const [linkNotice, setLinkNotice] = useState<string | null>(null);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
@@ -277,6 +301,7 @@ export function AuthProvider({
     setPhase({ status: "unauthenticated", client: current.client });
     setSession(null);
     setProfile(null);
+    setPasswordRecovery(false);
     setSessionState("unauthenticated");
     navigateToLogin();
   }, [navigateToLogin]);
@@ -310,6 +335,70 @@ export function AuthProvider({
     },
     [],
   );
+
+  const adoptEmailSession = useCallback(
+    async (sessionJson: GoTrueSessionJSON, opts: { recovery: boolean }) => {
+      // Flag first so the reset screen renders straight away - the app shell
+      // never flashes for a recovery session.
+      if (opts.recovery) setPasswordRecovery(true);
+      const res = await adoptReturnedSession(sessionJson);
+      if (!res.ok && opts.recovery) setPasswordRecovery(false);
+      if (res.ok) setLinkNotice(null);
+      return res;
+    },
+    [adoptReturnedSession],
+  );
+
+  const endPasswordRecovery = useCallback(() => setPasswordRecovery(false), []);
+  const clearLinkNotice = useCallback(() => setLinkNotice(null), []);
+
+  // Email links arrive as bahi://auth/callback#access_token=... (see
+  // @billing/api/email-auth). Listen once the client exists.
+  const clientReady = phase.status !== "restoring" && phase.client !== null;
+  useEffect(() => {
+    if (!clientReady) return;
+    let stop: (() => void) | undefined;
+    let cancelled = false;
+    const handle = async (url: string) => {
+      const parsed = parseAuthCallbackUrl(url);
+      if (parsed === null) return;
+      const current = phaseRef.current;
+      if (parsed.kind === "error") {
+        if (current.status === "authenticated") {
+          showToast({ variant: "error", message: EXPIRED_LINK_NOTICE });
+        } else {
+          setLinkNotice(EXPIRED_LINK_NOTICE);
+        }
+        return;
+      }
+      if (current.status === "authenticated" && current.client) {
+        // Never silently swap identities: a link for another account is
+        // refused while someone is signed in on this device.
+        const { data } = await current.client.auth.getSession();
+        const currentUserId = data.session?.user.id ?? null;
+        if (currentUserId !== null && parsed.userId !== currentUserId) {
+          showToast({ variant: "error", message: OTHER_ACCOUNT_LINK_NOTICE });
+          return;
+        }
+      }
+      const res = await adoptEmailSession(parsed.session, {
+        recovery: parsed.type === "recovery",
+      });
+      if (!res.ok) {
+        setLinkNotice(EXPIRED_LINK_NOTICE);
+        return;
+      }
+      if (current.status !== "authenticated") void authRouter?.navigate({ to: "/dashboard" });
+    };
+    void listenForDeepLinks((url) => void handle(url)).then((unlisten) => {
+      if (cancelled) unlisten();
+      else stop = unlisten;
+    });
+    return () => {
+      cancelled = true;
+      stop?.();
+    };
+  }, [clientReady, adoptEmailSession, authRouter]);
 
   const invokeFunction = useCallback(
     async (fn: string, opts?: { body?: unknown }) => {
@@ -347,8 +436,28 @@ export function AuthProvider({
       adoptReturnedSession,
       invokeFunction,
       refreshProfile,
+      passwordRecovery,
+      adoptEmailSession,
+      endPasswordRecovery,
+      linkNotice,
+      clearLinkNotice,
     }),
-    [phase.status, dataClient, session, profile, signOut, signInWithPassword, adoptReturnedSession, invokeFunction, refreshProfile],
+    [
+      phase.status,
+      dataClient,
+      session,
+      profile,
+      signOut,
+      signInWithPassword,
+      adoptReturnedSession,
+      invokeFunction,
+      refreshProfile,
+      passwordRecovery,
+      adoptEmailSession,
+      endPasswordRecovery,
+      linkNotice,
+      clearLinkNotice,
+    ],
   );
 
   return (

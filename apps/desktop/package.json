@@ -1,6 +1,6 @@
 {
   "name": "@billing/desktop",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Tauri 2 + React 19 desktop shell - the billing app's primary surface.",
@@ -21,6 +21,7 @@
     "@tanstack/react-query": "^5.102.0",
     "@tanstack/react-router": "^1.168.35",
     "@tauri-apps/api": "^2.11.1",
+    "@tauri-apps/plugin-deep-link": "^2",
     "@tauri-apps/plugin-store": "^2.4.2",
     "@tauri-apps/plugin-window-state": "^2.4.1",
     "date-fns": "^4.4.0",

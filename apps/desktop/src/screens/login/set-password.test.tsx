@@ -11,7 +11,14 @@ vi.mock("@billing/api/memberships", () => ({ setOwnPassword: vi.fn() }));
 const refreshProfile = vi.fn(async () => undefined);
 const signOut = vi.fn(async () => undefined);
 vi.mock("../../auth/AuthProvider", () => ({
-  useAuth: () => ({ client: {}, profile: { full_name: "Priya Shah" }, refreshProfile, signOut }),
+  useAuth: () => ({
+    client: {},
+    profile: { full_name: "Priya Shah" },
+    refreshProfile,
+    signOut,
+    passwordRecovery: false,
+    endPasswordRecovery: () => undefined,
+  }),
 }));
 
 const setOwnPasswordMock = vi.mocked(setOwnPassword);

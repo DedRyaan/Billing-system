@@ -27,6 +27,7 @@ import {
   setMembership,
 } from "@billing/api/memberships";
 import { listBusinesses, type BusinessRow } from "@billing/api/businesses";
+import { sendPasswordResetEmail } from "@billing/api/email-auth";
 import { keysFor } from "@billing/api/query-keys";
 import { DataTable, type DataTableColumn } from "../../components/ui/DataTable";
 import { Badge } from "../../components/ui/Badge";
@@ -61,6 +62,12 @@ import {
   RESET_PASSWORD_CONFIRM_BODY,
   RESET_PASSWORD_CONFIRM_VERB,
   RESET_PASSWORD_DONE_TITLE,
+  RESET_PASSWORD_HINT,
+  SEND_RESET_EMAIL_BUTTON,
+  SENDING_RESET_EMAIL,
+  resetEmailSent,
+  RESET_EMAIL_RATE_LIMITED,
+  RESET_EMAIL_NETWORK,
   resetPasswordConfirmTitle,
   ROLE_BADGE_ADMIN,
   ROLE_BADGE_STAFF,
@@ -228,6 +235,7 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
   const [assignmentsLoaded, setAssignmentsLoaded] = useState(false);
   const [confirm, setConfirm] = useState<"deactivate" | "reactivate" | "reset" | null>(null);
   const [resetPassword, setResetPassword] = useState<string | null>(null);
+  const [sendingResetEmail, setSendingResetEmail] = useState(false);
   const [lifecycleState, setLifecycleState] = useState(person.is_active);
 
   // Accessible-business universe for the chip grid (RLS listing).
@@ -297,6 +305,19 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
     else showToast({ variant: "error", message: res.error.message });
   };
 
+  const runResetEmail = async () => {
+    if (!client || sendingResetEmail) return;
+    setSendingResetEmail(true);
+    const res = await sendPasswordResetEmail(client, person.email);
+    setSendingResetEmail(false);
+    if (res.ok) showToast({ variant: "success", message: resetEmailSent(person.email) });
+    else
+      showToast({
+        variant: "error",
+        message: res.reason === "rate_limited" ? RESET_EMAIL_RATE_LIMITED : RESET_EMAIL_NETWORK,
+      });
+  };
+
   // Peer protection mirror: lifecycle controls exist ONLY for staff targets.
   const isStaffTarget = person.role === "staff";
 
@@ -351,13 +372,21 @@ export function PersonSheet({ open, onClose, client, person }: PersonSheetProps)
 
           {/* Password reset - STAFF targets only (same scope as lifecycle). */}
           {isStaffTarget && lifecycleState && (
-            <div className="flex items-center justify-between border-t border-hairline pt-md">
-              <span className="text-caption text-ink-secondary">
-                Forgot their password? Issue a temporary one.
-              </span>
-              <Button type="button" variant="secondary" onClick={() => setConfirm("reset")}>
-                {RESET_PASSWORD_BUTTON}
-              </Button>
+            <div className="flex flex-col gap-sm border-t border-hairline pt-md">
+              <span className="text-caption text-ink-secondary">{RESET_PASSWORD_HINT}</span>
+              <div className="flex flex-wrap justify-end gap-xs">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={sendingResetEmail}
+                  onClick={() => void runResetEmail()}
+                >
+                  {sendingResetEmail ? SENDING_RESET_EMAIL : SEND_RESET_EMAIL_BUTTON}
+                </Button>
+                <Button type="button" variant="secondary" onClick={() => setConfirm("reset")}>
+                  {RESET_PASSWORD_BUTTON}
+                </Button>
+              </div>
             </div>
           )}
 
