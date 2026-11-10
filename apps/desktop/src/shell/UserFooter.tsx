@@ -19,10 +19,27 @@ export interface UserFooterProps {
   /** Server-controlled profile role; rendered via roleCaption(). */
   role: string | null;
   onSignOut: () => void;
+  /** Icon rail: avatar only (name, role and sign-out show when expanded). */
+  collapsed?: boolean;
 }
 
-export function UserFooter({ fullName, email, role, onSignOut }: UserFooterProps) {
+export function UserFooter({ fullName, email, role, onSignOut, collapsed = false }: UserFooterProps) {
   const label = fullName ?? email ?? "Account";
+  if (collapsed) {
+    return (
+      <div className="flex justify-center border-t border-hairline py-sd" data-testid="user-footer">
+        <span
+          role="img"
+          aria-label={`${label}, ${roleCaption(role)}`}
+          title={label}
+          data-testid="footer-initials"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-subtle text-caption font-semibold text-accent-hover"
+        >
+          {initialsOf(fullName, email)}
+        </span>
+      </div>
+    );
+  }
   return (
     <div className="flex items-center gap-sm border-t border-hairline px-sd py-sd" data-testid="user-footer">
       <span

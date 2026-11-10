@@ -103,6 +103,15 @@ export const COL_STATE = "State";
 export const COL_SCHEME = "Scheme";
 export const SCHEME_REGULAR = "Regular";
 export const SCHEME_COMPOSITION = "Composition";
+export const SCHEME_UNREGISTERED = "No GST";
+export const GSTIN_NONE_DISPLAY = "Not registered";
+
+// Businesses without a GSTIN.
+export const NO_GSTIN_LABEL = "This business isn't registered for GST";
+export const NO_GSTIN_CONSEQUENCE =
+  "No GSTIN needed. Its bills go out as a Bill of Supply with no GST charged.";
+export const NO_GSTIN_LOCKED =
+  "Not registered for GST. If it registers later, add it again as a new business with its GSTIN.";
 export const STATUS_ARCHIVED_BADGE = "Archived";
 
 // Logo upload.

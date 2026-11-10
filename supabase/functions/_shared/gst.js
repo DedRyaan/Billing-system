@@ -983,7 +983,7 @@ function classifyDraft(lines) {
 * zero-rated-taxable) and Bills of Supply for genuinely non-taxable ones.
 */
 function classifyDocument(config) {
-	if (config.registrationType === "composition") return "BILL_OF_SUPPLY";
+	if (config.registrationType === "composition" || config.registrationType === "unregistered") return "BILL_OF_SUPPLY";
 	if (config.character === "taxable" || config.character === "zero_rated_taxable") return "TAX_INVOICE";
 	return "BILL_OF_SUPPLY";
 }
@@ -1024,7 +1024,10 @@ function totalInvoice(lines, ctx) {
 	if (!classification.ok) return classification;
 	const computed = [];
 	for (const [position, line] of lines.entries()) {
-		const result = computeLine(line, { head: ctx.head });
+		const result = computeLine(ctx.registrationType === "unregistered" ? {
+			...line,
+			gstRateBps: 0n
+		} : line, { head: ctx.head });
 		if (!result.ok) return {
 			ok: false,
 			reason: result.reason,

@@ -15,21 +15,23 @@ export interface BusinessRow {
   id: string;
   legal_name: string;
   trade_name: string | null;
-  gstin: string;
+  /** null exactly when registration_type is "unregistered" (no GST). */
+  gstin: string | null;
   number_format: string;
   prefix: string | null;
   address: Record<string, unknown> | null;
   state: string | null;
   phone: string | null;
   email: string | null;
-  registration_type: "regular" | "composition" | string;
+  registration_type: "regular" | "composition" | "unregistered" | string;
   logo_path: string | null;
   archived_at: string | null;
   created_at: string;
 }
 
 export interface CreateBusinessInput {
-  gstin: string;
+  /** null for a business not registered for GST. */
+  gstin: string | null;
   legal_name: string;
   trade_name?: string | null;
   address?: Record<string, unknown> | null;
@@ -37,7 +39,7 @@ export interface CreateBusinessInput {
   state?: string | null;
   phone?: string | null;
   email?: string | null;
-  registration_type: "regular" | "composition";
+  registration_type: "regular" | "composition" | "unregistered";
   number_format: "prefix_fy_seq" | "prefix_seq" | "seq";
   prefix?: string | null;
 }

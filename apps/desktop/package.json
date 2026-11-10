@@ -1,6 +1,6 @@
 {
   "name": "@billing/desktop",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "private": true,
   "type": "module",
   "description": "Tauri 2 + React 19 desktop shell - the billing app's primary surface.",

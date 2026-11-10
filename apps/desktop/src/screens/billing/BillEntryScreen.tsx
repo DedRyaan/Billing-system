@@ -226,7 +226,7 @@ function BillEntryContent({ targetInvoiceId, onShowHistory }: BillEntryContentPr
   // No customer (walk-in sale) or a customer without a state is billed as an
   // intra-state supply — the same default finalize-invoice applies server-side.
   const customerStateCode = selectedCustomer?.state ?? supplierStateCode;
-  const registrationType = (biz.activeBusiness?.registration_type as "regular" | "composition") ?? "regular";
+  const registrationType = (biz.activeBusiness?.registration_type as "regular" | "composition" | "unregistered") ?? "regular";
 
   const draftResult = useDraftTotals(lines, supplierStateCode, customerStateCode, registrationType);
 

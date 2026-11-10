@@ -29,7 +29,11 @@ export type LineCharacter =
 
 export type PricingMode = 'exclusive' | 'inclusive';
 
-export type RegistrationType = 'regular' | 'composition';
+/**
+ * 'unregistered': the business has no GSTIN. It cannot collect GST, so every
+ * line computes with zero tax and the document is a Bill of Supply.
+ */
+export type RegistrationType = 'regular' | 'composition' | 'unregistered';
 
 /** D-60: all four no-tax flavors modeled distinctly from taxable@0%. */
 const NON_TAXABLE_CHARACTERS: readonly LineCharacter[] = [
@@ -236,7 +240,9 @@ export function classifyDocument(config: {
   registrationType: RegistrationType;
   character: LineCharacter | null;
 }): DocClass {
-  if (config.registrationType === 'composition') return 'BILL_OF_SUPPLY';
+  if (config.registrationType === 'composition' || config.registrationType === 'unregistered') {
+    return 'BILL_OF_SUPPLY';
+  }
   if (config.character === 'taxable' || config.character === 'zero_rated_taxable') {
     return 'TAX_INVOICE';
   }
@@ -333,7 +339,10 @@ export function totalInvoice(
 
   const computed: LineResult[] = [];
   for (const [position, line] of lines.entries()) {
-    const result = computeLine(line, { head: ctx.head });
+    // An unregistered business charges no GST: every line computes at the
+    // 0% slab, so an inclusive price stays the full price (nothing backed out).
+    const effective = ctx.registrationType === 'unregistered' ? { ...line, gstRateBps: 0n } : line;
+    const result = computeLine(effective, { head: ctx.head });
     if (!result.ok) return { ok: false, reason: result.reason, linePosition: position };
     computed.push(result);
   }

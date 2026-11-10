@@ -4,6 +4,10 @@
 // 4px accent progress bar during flight; failure toast w/ Retry re-running
 // the SAME file. The image renders ONLY through <img src=signedUrl> - never
 // inline SVG markup, so script-bearing uploads cannot execute in the DOM.
+//
+// Deferred mode (businessId === null, i.e. "Add business"): the business has
+// no id yet, so the picked file is held locally with an object-URL preview
+// and handed to onPicked; the caller uploads it once the business exists.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ImagePlus } from "lucide-react";
 import {
@@ -23,11 +27,14 @@ import {
 
 export interface LogoUploadFieldProps {
   deps: LogoStorageDeps;
-  businessId: string;
+  /** null = deferred mode (business not created yet). */
+  businessId: string | null;
   existingPath: string | null;
   disabled?: boolean;
   onUploaded: (path: string) => void;
   onRemoved: () => void;
+  /** Deferred mode: the file the person picked (null after Remove). */
+  onPicked?: (file: File | null) => void;
 }
 
 /** Extension from a stored/uploaded logo path ("businesses/{id}/logo.svg" -> "svg"). */
@@ -46,6 +53,7 @@ export function LogoUploadField({
   disabled = false,
   onUploaded,
   onRemoved,
+  onPicked,
 }: LogoUploadFieldProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [signedUrl, setSignedUrl] = useState<string | null>(null);
@@ -61,8 +69,8 @@ export function LogoUploadField({
   const signFor = useCallback(
     async (path: string | null) => {
       const ext = extensionFromPath(path);
-      if (ext === null) {
-        setSignedUrl(null);
+      if (ext === null || businessId === null) {
+        if (businessId !== null) setSignedUrl(null);
         return;
       }
       const res = await createSignedLogoUrl(deps, businessId, ext);
@@ -84,12 +92,18 @@ export function LogoUploadField({
       return;
     }
     setGateError(null);
+    if (businessId === null) {
+      setSignedUrl((prev) => {
+        if (prev !== null && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+        return URL.createObjectURL(file);
+      });
+      onPicked?.(file);
+      return;
+    }
     setUploading(true);
     try {
-      const res = await uploadLogo(deps, {
-        businessId,
-        file: { name: file.name, type: file.type, size: file.size },
-      });
+      // The File itself is the upload body (it carries name/type/size too).
+      const res = await uploadLogo(deps, { businessId, file });
       if (res.ok) {
         lastFileRef.current = file;
         setLocalPath(res.path);
@@ -113,6 +127,14 @@ export function LogoUploadField({
   };
 
   const handleRemove = async () => {
+    if (businessId === null) {
+      setSignedUrl((prev) => {
+        if (prev !== null && prev.startsWith("blob:")) URL.revokeObjectURL(prev);
+        return null;
+      });
+      onPicked?.(null);
+      return;
+    }
     // CR-04: remove the REAL object (extension from the known path) and map
     // storage errors to the failure toast - never a silent no-op success.
     const res = await removeLogo(deps, businessId, extensionFromPath(effectivePath) ?? "");

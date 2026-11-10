@@ -339,3 +339,52 @@ describe('integration: rejections propagate through totalInvoice with positions'
     expect(direct.sgstOrUtgstPaise).toBe(92n);
   });
 });
+
+describe('integration: unregistered business (no GSTIN) charges no GST', () => {
+  const lines = [
+    {
+      qtyMilli: 1000n,
+      unitPricePaise: 11800n,
+      discountBps: 0n,
+      pricingMode: 'inclusive',
+      gstRateBps: 1800n,
+      character: 'taxable',
+    },
+    {
+      qtyMilli: 2000n,
+      unitPricePaise: 5000n,
+      discountBps: 0n,
+      pricingMode: 'exclusive',
+      gstRateBps: 500n,
+      character: 'taxable',
+    },
+  ] as const;
+
+  it('prices stay whole, tax is zero and the document is a Bill of Supply', () => {
+    const totals = totalInvoice([...lines], {
+      head: 'CGST_SGST',
+      registrationType: 'unregistered',
+      reverseCharge: false,
+    });
+    if (!totals.ok) throw new Error(totals.reason);
+    expect(totals.taxPaise).toBe(0n);
+    // Inclusive Rs118 stays Rs118 (no tax backed out) + 2 x Rs50.
+    expect(totals.subtotalPaise).toBe(21800n);
+    expect(totals.grandTotalPaise).toBe(21800n);
+    expect(totals.docClass).toBe('BILL_OF_SUPPLY');
+    for (const line of totals.lines) {
+      expect(line.gstRateBps).toBe(0n);
+      expect(line.cgstPaise + line.sgstOrUtgstPaise + line.igstPaise).toBe(0n);
+    }
+  });
+
+  it('the same lines on a regular business still carry GST', () => {
+    const totals = totalInvoice([...lines], {
+      head: 'CGST_SGST',
+      registrationType: 'regular',
+      reverseCharge: false,
+    });
+    if (!totals.ok) throw new Error(totals.reason);
+    expect(totals.taxPaise).toBeGreaterThan(0n);
+  });
+});

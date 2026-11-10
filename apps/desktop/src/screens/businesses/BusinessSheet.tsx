@@ -42,6 +42,9 @@ import {
   SECTION_ADDRESS,
   SECTION_CONTACT,
   SECTION_GSTIN,
+  NO_GSTIN_LABEL,
+  NO_GSTIN_CONSEQUENCE,
+  NO_GSTIN_LOCKED,
   SECTION_IDENTITY,
   SECTION_LOGO,
   SECTION_TAX,
@@ -114,6 +117,7 @@ export function BusinessSheet({
   const [archiveOpen, setArchiveOpen] = useState(false);
   const readOnly = mode === "detail";
   const editLocked = mode === "edit"; // GSTIN/tax-config are create-only facts
+  const unregistered = values.registration_type === "unregistered";
 
   const set = <K extends keyof BusinessFormValues>(key: K, value: BusinessFormValues[K]) => {
     if (readOnly) return;
@@ -211,15 +215,47 @@ export function BusinessSheet({
         {/* GSTIN */}
         <section className="flex flex-col gap-sd">
           <SectionLabel>{SECTION_GSTIN}</SectionLabel>
-          <Field id="biz-gstin" label={FIELD_GSTIN} error={err("gstin")} helper={editLocked ? "GSTIN cannot change after creation." : undefined}>
-            <Input
-              value={values.gstin}
-              onChange={(e) => set("gstin", e.target.value.toUpperCase())}
-              maxLength={15}
-              className="font-mono"
-              readOnly={readOnly || editLocked}
-            />
-          </Field>
+          {unregistered && (readOnly || editLocked) ? (
+            <p className="text-body text-ink-secondary" data-testid="no-gstin-locked">
+              {NO_GSTIN_LOCKED}
+            </p>
+          ) : (
+            <>
+              {!unregistered && (
+                <Field id="biz-gstin" label={FIELD_GSTIN} error={err("gstin")} helper={editLocked ? "GSTIN cannot change after creation." : undefined}>
+                  <Input
+                    value={values.gstin}
+                    onChange={(e) => set("gstin", e.target.value.toUpperCase())}
+                    maxLength={15}
+                    className="font-mono"
+                    readOnly={readOnly || editLocked}
+                  />
+                </Field>
+              )}
+              {!readOnly && !editLocked && (
+                <label className="flex cursor-pointer items-start gap-sm">
+                  <input
+                    type="checkbox"
+                    checked={unregistered}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      setValues((v) => ({
+                        ...v,
+                        registration_type: on ? "unregistered" : "regular",
+                        gstin: on ? "" : v.gstin,
+                      }));
+                      setErrors((er) => ({ ...er, gstin: undefined, registration_type: undefined }));
+                    }}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                  />
+                  <span className="flex flex-col">
+                    <span className="text-body text-ink">{NO_GSTIN_LABEL}</span>
+                    <span className="text-caption text-ink-secondary">{NO_GSTIN_CONSEQUENCE}</span>
+                  </span>
+                </label>
+              )}
+            </>
+          )}
         </section>
 
         {/* ADDRESS & STATE */}
@@ -264,6 +300,7 @@ export function BusinessSheet({
         {/* TAX CONFIGURATION */}
         <section className="flex flex-col gap-sd">
           <SectionLabel>{SECTION_TAX}</SectionLabel>
+          {!unregistered && (
           <div>
             <p className="mb-xs text-caption text-ink-secondary">{REGISTRATION_LABEL}</p>
             <RadioCardGroup
@@ -279,6 +316,7 @@ export function BusinessSheet({
               disabled={readOnly || editLocked}
             />
           </div>
+          )}
           <div>
             <p className="mb-xs text-caption text-ink-secondary">{NUMBERING_LABEL}</p>
             <RadioCardGroup

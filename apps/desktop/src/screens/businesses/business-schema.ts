@@ -7,7 +7,7 @@ import { z } from "zod";
 import { deriveFinancialYear, validateGstin } from "@billing/gst";
 import { gstinFailCaption } from "../../lib/strings/businesses";
 
-export const REGISTRATION_TYPES = ["regular", "composition"] as const;
+export const REGISTRATION_TYPES = ["regular", "composition", "unregistered"] as const;
 export const NUMBER_FORMATS = ["prefix_fy_seq", "prefix_seq", "seq"] as const;
 
 export interface BusinessFormValues {
@@ -33,7 +33,8 @@ export type BusinessFormErrors = Partial<Record<BusinessFormField, string | unde
 export interface NormalizedBusinessForm {
   legal_name: string;
   trade_name: string | null;
-  gstin: string;
+  /** null for a business not registered for GST. */
+  gstin: string | null;
   address: { lines: string[]; city: string; pincode: string };
   state: string;
   phone: string | null;
@@ -91,8 +92,11 @@ export function validateBusinessForm(
   }
 
   // GSTIN law belongs to the engine (fail-union reasons surfaced verbatim).
+  const unregistered = values.registration_type === "unregistered";
   const gstinUpper = values.gstin.trim().toUpperCase();
-  if (gstinUpper.length === 0) {
+  if (unregistered) {
+    // No GSTIN to check - the business is not registered for GST.
+  } else if (gstinUpper.length === 0) {
     errors["gstin"] = "GSTIN is required.";
   } else {
     const verdict = validateGstin(gstinUpper);
@@ -136,7 +140,7 @@ export function validateBusinessForm(
     normalized: {
       legal_name: values.legal_name.trim(),
       trade_name: values.trade_name.trim().length > 0 ? values.trade_name.trim() : null,
-      gstin: gstinUpper,
+      gstin: unregistered ? null : gstinUpper,
       address: {
         lines,
         city: values.city.trim(),

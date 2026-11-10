@@ -330,7 +330,8 @@ export async function handleFinalizeInvoice(
     head,
     registrationType: business.registration_type as
       | "regular"
-      | "composition",
+      | "composition"
+      | "unregistered",
     reverseCharge: invoice.reverse_charge ?? false,
   });
   if (!totals.ok) {

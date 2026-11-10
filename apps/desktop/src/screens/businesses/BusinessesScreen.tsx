@@ -24,7 +24,7 @@ import { Button } from "../../components/ui/Button";
 import { HeaderRow } from "../../shell/HeaderRow";
 import { useAuth } from "../../auth/AuthProvider";
 import { useOnlineStatus, OFFLINE_CTA_TOOLTIP } from "../../shell/OfflineBanner";
-import { showMutationFailure } from "../../shell/toast-store";
+import { showMutationFailure, showToast } from "../../shell/toast-store";
 import { useBusinessRealtime } from "../../lib/hooks/useBusinessRealtime";
 import { CTA_ADD_BUSINESS } from "../../lib/strings/shell";
 import {
@@ -35,6 +35,8 @@ import {
   EMPTY_BODY,
   EMPTY_TITLE,
   SCHEME_COMPOSITION,
+  SCHEME_UNREGISTERED,
+  GSTIN_NONE_DISPLAY,
   SCHEME_REGULAR,
   SEARCH_PLACEHOLDER,
   SHOW_ARCHIVED_CHECKBOX,
@@ -42,6 +44,7 @@ import {
 } from "../../lib/strings/businesses";
 import { BusinessSheet } from "./BusinessSheet";
 import { LogoUploadField } from "./LogoUploadField";
+import { uploadLogo } from "@billing/api/logos";
 import type { NormalizedBusinessForm } from "./business-schema";
 
 interface RowVM {
@@ -62,6 +65,8 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
   const qc = useQueryClient();
   const online = useOnlineStatus();
   const [showArchived, setShowArchived] = useState(false);
+  // Logo picked in the "Add business" sheet; uploaded once the row exists.
+  const [pendingLogo, setPendingLogo] = useState<File | null>(null);
   // Sheet state: null = closed.
   const [sheet, setSheet] = useState<
     | { mode: "create" }
@@ -104,10 +109,14 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
         id: r.id,
         display_name: r.legal_name,
         trade: r.trade_name ?? "",
-        gstin_display: r.gstin,
+        gstin_display: r.gstin ?? GSTIN_NONE_DISPLAY,
         state_name: r.state !== null ? (getStateEntry(r.state)?.name ?? r.state) : "—",
         scheme_label:
-          r.registration_type === "composition" ? SCHEME_COMPOSITION : SCHEME_REGULAR,
+          r.registration_type === "composition"
+            ? SCHEME_COMPOSITION
+            : r.registration_type === "unregistered"
+              ? SCHEME_UNREGISTERED
+              : SCHEME_REGULAR,
         registration_type: String(r.registration_type),
         status_label: r.archived_at != null ? STATUS_ARCHIVED_BADGE : null,
       })),
@@ -150,6 +159,19 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
       // Result envelopes are DATA - map denials onto the error channel so the
       // rollback + toast contract runs uniformly (T-3-25).
       if (!res.ok) throw new Error(res.error.message);
+      if (editingId === undefined && pendingLogo !== null && logoDeps !== undefined) {
+        // The business exists now: upload the logo picked during creation.
+        // A failed logo never fails the create - it says so and can be
+        // retried from the edit sheet.
+        const up = await uploadLogo(logoDeps, { businessId: res.data.id, file: pendingLogo });
+        const saved = up.ok ? await updateBusiness(auth.client, res.data.id, { logo_path: up.path }) : null;
+        if (saved === null || !saved.ok) {
+          showToast({
+            variant: "error",
+            message: "Business added, but the logo didn't upload. Open the business to add it again.",
+          });
+        }
+      }
       return res.data;
     },
     // WR-01: GENUINE optimism (UI-SPEC state matrix - "Row updates instantly
@@ -225,6 +247,7 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
     },
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: listingKey });
+      setPendingLogo(null);
       setSheet(null);
     },
     onSettled: () => {
@@ -347,7 +370,10 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
       {sheet !== null && (
         <BusinessSheet
           open
-          onClose={() => setSheet(null)}
+          onClose={() => {
+            setPendingLogo(null);
+            setSheet(null);
+          }}
           mode={"row" in sheet ? sheet.mode : "create"}
           {...("row" in sheet
             ? {
@@ -380,6 +406,20 @@ export function BusinessesScreen({ logoDeps }: { logoDeps?: Parameters<typeof Lo
                   lifecycleMutation.mutate({ id: sheet.row.id, verb: "restore" });
                   setSheet(null);
                 },
+              }
+            : {})}
+          {...(!("row" in sheet) && canEdit && logoDeps !== undefined
+            ? {
+                logoSlot: (
+                  <LogoUploadField
+                    deps={logoDeps}
+                    businessId={null}
+                    existingPath={null}
+                    onUploaded={() => undefined}
+                    onRemoved={() => undefined}
+                    onPicked={setPendingLogo}
+                  />
+                ),
               }
             : {})}
           {...("row" in sheet && sheet.mode === "edit" && canEdit
@@ -437,14 +477,14 @@ function rowToInitial(row: BusinessRow): Partial<{
   state_code: string;
   phone: string;
   email: string;
-  registration_type: "regular" | "composition";
+  registration_type: NormalizedBusinessForm["registration_type"];
   number_format: NormalizedBusinessForm["number_format"];
   prefix: string;
 }> {
   return {
     legal_name: row.legal_name,
     trade_name: row.trade_name ?? "",
-    gstin: row.gstin,
+    gstin: row.gstin ?? "",
     address_text: readAddressText(row.address),
     city: readAddressCity(row.address),
     pincode: readAddressPincode(row.address),
@@ -452,8 +492,8 @@ function rowToInitial(row: BusinessRow): Partial<{
     phone: row.phone ?? "",
     email: row.email ?? "",
     registration_type:
-      row.registration_type === "composition"
-        ? ("composition" as const)
+      row.registration_type === "composition" || row.registration_type === "unregistered"
+        ? row.registration_type
         : ("regular" as const),
     number_format: row.number_format as NormalizedBusinessForm["number_format"],
     prefix: row.prefix ?? "",
@@ -469,10 +509,12 @@ function draftToInitial(draft: NormalizedBusinessForm): Partial<{
   state_code: string;
   phone: string;
   email: string;
+  registration_type: NormalizedBusinessForm["registration_type"];
 }> {
   return {
     legal_name: draft.legal_name,
-    gstin: draft.gstin,
+    gstin: draft.gstin ?? "",
+    registration_type: draft.registration_type,
     address_text: draft.address.lines.join("\n"),
     city: draft.address.city,
     pincode: draft.address.pincode,

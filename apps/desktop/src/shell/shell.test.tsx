@@ -2,7 +2,7 @@
 // server-truth role, persistent collapse, footer logout, header anatomy,
 // placeholder ghost with zero interactivity, exact spec copy.
 import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { FileText } from "lucide-react";
 import { Sidebar } from "./Sidebar";
@@ -90,14 +90,40 @@ describe("NavList via Sidebar", () => {
   });
 });
 
-describe("Sidebar collapse", () => {
-  it("toggles rail width and persists through ui-prefs", async () => {
+describe("Sidebar pin", () => {
+  it("unpinning shrinks the layout slot to the rail and persists through ui-prefs", async () => {
     const user = userEvent.setup();
     const { prefs, getByTestId } = renderSidebar({ role: "staff" });
-    expect(getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
-    await user.click(getByTestId("collapse-toggle"));
-    expect(getByTestId("sidebar").getAttribute("data-collapsed")).toBe("true");
+    expect(getByTestId("sidebar").getAttribute("data-pinned")).toBe("true");
+    await user.click(getByTestId("pin-toggle"));
+    expect(getByTestId("sidebar").getAttribute("data-pinned")).toBe("false");
+    expect(getByTestId("sidebar-slot").style.width).toBe("var(--width-sidebar-rail)");
     expect(prefs.store.get("ui.sidebar.collapsed")).toBe("1");
+    // Still open under the pointer until it leaves.
+    expect(getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false");
+    await user.unhover(getByTestId("sidebar"));
+    expect(getByTestId("sidebar").getAttribute("data-collapsed")).toBe("true");
+  });
+
+  it("an unpinned rail slides out on hover and pins again from the slide-out", async () => {
+    const user = userEvent.setup();
+    const { prefs, getByTestId, queryByTestId } = renderSidebar({ role: "staff", collapsedSeed: "1" });
+    expect(queryByTestId("pin-toggle")).toBeNull();
+    await user.hover(getByTestId("sidebar"));
+    await waitFor(() => expect(getByTestId("sidebar").getAttribute("data-collapsed")).toBe("false"));
+    // Slides OVER content: the layout slot stays rail-wide.
+    expect(getByTestId("sidebar-slot").style.width).toBe("var(--width-sidebar-rail)");
+    // fireEvent: user-event's synthetic pointer move fires a spurious
+    // mouseleave on the aside in jsdom (real browsers keep it open).
+    fireEvent.click(getByTestId("pin-toggle"));
+    expect(getByTestId("sidebar-slot").style.width).toBe("var(--width-sidebar-expanded)");
+    expect(prefs.store.get("ui.sidebar.collapsed")).toBe("0");
+  });
+
+  it("collapsed rail shows only the avatar in the footer", () => {
+    const { getByTestId, queryByTestId } = renderSidebar({ role: "super_admin", collapsedSeed: "1" });
+    expect(getByTestId("user-footer").textContent).toBe("AP");
+    expect(queryByTestId("logout-button")).toBeNull();
   });
 
   it("restores persisted collapsed state on mount", () => {

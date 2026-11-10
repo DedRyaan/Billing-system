@@ -38,7 +38,7 @@ export function useDraftTotals(
   lines: LineItemDraft[],
   supplierStateCode: string | null,
   customerStateCode: string | null,
-  registrationType: "regular" | "composition",
+  registrationType: "regular" | "composition" | "unregistered",
 ): DraftTotalsResult | null {
   return useMemo(() => {
     if (lines.length === 0 || !supplierStateCode || !customerStateCode) return null;

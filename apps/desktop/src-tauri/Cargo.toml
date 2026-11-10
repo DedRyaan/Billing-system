@@ -6,7 +6,7 @@
 
 [package]
 name = "billing-desktop"
-version = "0.4.0"
+version = "0.4.1"
 edition = "2021"
 description = "Settle - GST billing desktop shell (Tauri 2)"
 
