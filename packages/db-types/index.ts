@@ -117,7 +117,7 @@ export type Database = {
           archived_at: string | null
           created_at: string
           email: string | null
-          gstin: string
+          gstin: string | null
           id: string
           legal_name: string
           logo_path: string | null
@@ -133,7 +133,7 @@ export type Database = {
           archived_at?: string | null
           created_at?: string
           email?: string | null
-          gstin: string
+          gstin?: string | null
           id?: string
           legal_name: string
           logo_path?: string | null
@@ -149,7 +149,7 @@ export type Database = {
           archived_at?: string | null
           created_at?: string
           email?: string | null
-          gstin?: string
+          gstin?: string | null
           id?: string
           legal_name?: string
           logo_path?: string | null
