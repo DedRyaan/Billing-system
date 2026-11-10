@@ -1,7 +1,7 @@
 // Email sign-in (magic link) and forgot-password flows for the sign-in screen.
 //
 // Step 1 sends the email; step 2 waits for either the link (handled by
-// AuthProvider's bahi:// listener) or the code typed here. Both emails carry
+// AuthProvider's settle:// listener) or the code typed here. Both emails carry
 // both, so a person who read the email on their phone can still finish.
 
 import { useEffect, useState, type FormEvent } from "react";

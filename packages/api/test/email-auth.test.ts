@@ -106,7 +106,7 @@ describe("verifyEmailCode", () => {
 describe("parseAuthCallbackUrl", () => {
   it("reads tokens, type and user id from the fragment", () => {
     const parsed = parseAuthCallbackUrl(
-      `bahi://auth/callback#access_token=${JWT}&expires_in=3600&refresh_token=rt&token_type=bearer&type=recovery`,
+      `settle://auth/callback#access_token=${JWT}&expires_in=3600&refresh_token=rt&token_type=bearer&type=recovery`,
     );
     expect(parsed).toEqual({
       kind: "session",
@@ -119,7 +119,7 @@ describe("parseAuthCallbackUrl", () => {
   it("reads Supabase error redirects", () => {
     expect(
       parseAuthCallbackUrl(
-        "bahi://auth/callback#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired",
+        "settle://auth/callback#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid+or+has+expired",
       ),
     ).toEqual({
       kind: "error",
@@ -130,8 +130,8 @@ describe("parseAuthCallbackUrl", () => {
 
   it("ignores other schemes, routes and incomplete links", () => {
     expect(parseAuthCallbackUrl("https://auth/callback#access_token=a&refresh_token=b")).toBeNull();
-    expect(parseAuthCallbackUrl("bahi://bills/123#access_token=a&refresh_token=b")).toBeNull();
-    expect(parseAuthCallbackUrl("bahi://auth/callback#access_token=a")).toBeNull();
+    expect(parseAuthCallbackUrl("settle://bills/123#access_token=a&refresh_token=b")).toBeNull();
+    expect(parseAuthCallbackUrl("settle://auth/callback#access_token=a")).toBeNull();
     expect(parseAuthCallbackUrl("not a url")).toBeNull();
   });
 });

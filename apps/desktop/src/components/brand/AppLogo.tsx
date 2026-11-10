@@ -1,6 +1,6 @@
-// AppLogo - the Bahi mark (indigo tile, ledger with ribbon and rupee) as
+// AppLogo - the Settle mark (a coin at rest on a level ledger, navy tile) as
 // inline SVG so it renders crisply at any size with no asset request. Same
-// geometry as src-tauri/icons/bahi-mark.svg, the app-icon source.
+// geometry as src-tauri/icons/settle-mark.svg, the app-icon source.
 import { APP_NAME } from "../../lib/strings/brand";
 
 export function AppLogo({ size = 48, decorative = false }: { size?: number; decorative?: boolean }) {
@@ -15,16 +15,10 @@ export function AppLogo({ size = 48, decorative = false }: { size?: number; deco
       aria-hidden={decorative ? true : undefined}
       className="shrink-0"
     >
-      <rect x="0" y="0" width="512" height="512" rx="112" fill="#4A5FE5" />
-      <rect x="124" y="92" width="264" height="328" rx="30" fill="#F5F3EE" />
-      <rect x="124" y="92" width="52" height="328" rx="26" fill="#DED8CA" />
-      <rect x="150" y="92" width="26" height="328" fill="#DED8CA" />
-      <path d="M318 92 V178 L340 160 L362 178 V92 Z" fill="#C6403C" />
-      <g fill="none" stroke="#1A1A18" strokeWidth="24" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M214 196 H330" />
-        <path d="M214 240 H330" />
-        <path d="M214 196 H252 C306 196 306 284 252 284 H222 L318 372" />
-      </g>
+      <rect x="0" y="0" width="512" height="512" rx="114" fill="#1F2A44" />
+      <circle cx="256" cy="192" r="56" fill="#EF9F27" />
+      <rect x="136" y="264" width="240" height="44" rx="22" fill="#F5F3EE" />
+      <rect x="136" y="332" width="240" height="44" rx="22" fill="#F5F3EE" />
     </svg>
   );
 }

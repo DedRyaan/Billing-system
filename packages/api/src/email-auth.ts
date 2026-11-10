@@ -5,8 +5,8 @@
 //   * the code works anywhere (type it into the app, even if the email was
 //     read on a phone);
 //   * the link goes through Supabase's /verify endpoint, which redirects to
-//     AUTH_REDIRECT_URL (bahi://auth/callback#access_token=...). Windows hands
-//     that URL to the installed app via the registered bahi:// scheme.
+//     AUTH_REDIRECT_URL (settle://auth/callback#access_token=...). Windows hands
+//     that URL to the installed app via the registered settle:// scheme.
 //
 // Enumeration resistance: sending never reveals whether an account exists.
 // The UI shows one "if an account exists" message for every outcome except
@@ -16,7 +16,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { GoTrueSessionJSON } from "./auth";
 
 /** Where email links land. Must be in the project's redirect allow-list. */
-export const AUTH_REDIRECT_URL = "bahi://auth/callback";
+export const AUTH_REDIRECT_URL = "settle://auth/callback";
 
 export type EmailSendResult =
   | { ok: true }
@@ -148,7 +148,7 @@ function decodeJwtSubject(jwt: string): string | null {
 }
 
 /**
- * Parse a bahi://auth/callback URL. Returns null for anything that is not an
+ * Parse a settle://auth/callback URL. Returns null for anything that is not an
  * auth callback (other deep links, malformed input).
  */
 export function parseAuthCallbackUrl(raw: string): AuthCallback | null {
@@ -158,8 +158,8 @@ export function parseAuthCallbackUrl(raw: string): AuthCallback | null {
   } catch {
     return null;
   }
-  if (url.protocol !== "bahi:") return null;
-  // bahi://auth/callback parses as host "auth", path "/callback".
+  if (url.protocol !== "settle:") return null;
+  // settle://auth/callback parses as host "auth", path "/callback".
   const route = `${url.host}${url.pathname}`.replace(/\/+$/, "");
   if (route !== "auth/callback") return null;
 

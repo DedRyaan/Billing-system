@@ -1,4 +1,4 @@
-// bahi:// deep links (email sign-in and password-reset links).
+// settle:// deep links (email sign-in and password-reset links).
 //
 // Windows starts the app with the URL when it is closed; when it is already
 // running, single-instance forwards the URL and onOpenUrl fires. Outside the
@@ -12,7 +12,7 @@ function inTauri(): boolean {
   );
 }
 
-/** Subscribe to incoming bahi:// URLs. Returns an unsubscribe function. */
+/** Subscribe to incoming settle:// URLs. Returns an unsubscribe function. */
 export async function listenForDeepLinks(onUrl: (url: string) => void): Promise<() => void> {
   if (!inTauri()) return () => undefined;
   try {

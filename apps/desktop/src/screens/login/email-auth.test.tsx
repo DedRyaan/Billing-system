@@ -6,7 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { AuthProvider, useAuth } from "../../auth/AuthProvider";
 import { LoginScreen } from "./LoginScreen";
 
-// Deep links: tests push bahi:// URLs through this handle.
+// Deep links: tests push settle:// URLs through this handle.
 const deepLink = vi.hoisted(() => ({ emit: (_url: string) => undefined as void }));
 vi.mock("../../auth/deepLinks", () => ({
   listenForDeepLinks: async (onUrl: (url: string) => void) => {
@@ -80,7 +80,7 @@ describe("LoginScreen email flows", () => {
     await user.click(screen.getByRole("button", { name: "Send reset email" }));
     await screen.findByRole("status");
     expect(resetPasswordForEmail).toHaveBeenCalledWith("priya@example.in", {
-      redirectTo: "bahi://auth/callback",
+      redirectTo: "settle://auth/callback",
     });
 
     await user.type(screen.getByLabelText("Code from the email"), "654321");
@@ -130,7 +130,7 @@ function RecoveryProbe() {
 
 const jwtFor = (sub: string) => `x.${btoa(JSON.stringify({ sub })).replace(/=+$/, "")}.y`;
 
-describe("bahi:// email links", () => {
+describe("settle:// email links", () => {
   it("a password-reset link signs in and opens the choose-a-new-password state", async () => {
     const navigate = vi.fn();
     const client = fakeClient({});
@@ -141,7 +141,7 @@ describe("bahi:// email links", () => {
     );
     await screen.findByTestId("probe");
     const at = jwtFor("u1");
-    deepLink.emit(`bahi://auth/callback#access_token=${at}&refresh_token=rt&type=recovery`);
+    deepLink.emit(`settle://auth/callback#access_token=${at}&refresh_token=rt&type=recovery`);
     await waitFor(() => expect(screen.getByTestId("probe")).toHaveTextContent("authenticated|true|"));
     expect(client.auth.setSession).toHaveBeenCalledWith({ access_token: at, refresh_token: "rt" });
     expect(navigate).toHaveBeenCalledWith({ to: "/dashboard" });
@@ -155,7 +155,7 @@ describe("bahi:// email links", () => {
       </AuthProvider>,
     );
     await screen.findByTestId("probe");
-    deepLink.emit("bahi://auth/callback#error=access_denied&error_code=otp_expired");
+    deepLink.emit("settle://auth/callback#error=access_denied&error_code=otp_expired");
     await waitFor(() =>
       expect(screen.getByTestId("probe")).toHaveTextContent("unauthenticated|false|That email link has expired"),
     );
@@ -175,7 +175,7 @@ describe("bahi:// email links", () => {
       </AuthProvider>,
     );
     await waitFor(() => expect(screen.getByTestId("probe")).toHaveTextContent("authenticated|false|"));
-    deepLink.emit(`bahi://auth/callback#access_token=${jwtFor("someone-else")}&refresh_token=rt&type=magiclink`);
+    deepLink.emit(`settle://auth/callback#access_token=${jwtFor("someone-else")}&refresh_token=rt&type=magiclink`);
     await new Promise((r) => setTimeout(r, 20));
     expect(client.auth.setSession).not.toHaveBeenCalled();
     expect(screen.getByTestId("probe")).toHaveTextContent("authenticated|false|");

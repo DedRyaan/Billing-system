@@ -352,7 +352,7 @@ export function AuthProvider({
   const endPasswordRecovery = useCallback(() => setPasswordRecovery(false), []);
   const clearLinkNotice = useCallback(() => setLinkNotice(null), []);
 
-  // Email links arrive as bahi://auth/callback#access_token=... (see
+  // Email links arrive as settle://auth/callback#access_token=... (see
   // @billing/api/email-auth). Listen once the client exists.
   const clientReady = phase.status !== "restoring" && phase.client !== null;
   useEffect(() => {

@@ -87,9 +87,9 @@ describe("brand helpers", () => {
   });
 
   it("builds a shareable login-details message", () => {
-    const msg = loginDetailsMessage({ appName: "Bahi", name: "Priya", email: "p@x.in", password: "T3mp!pass" });
+    const msg = loginDetailsMessage({ appName: "Settle", name: "Priya", email: "p@x.in", password: "T3mp!pass" });
     expect(msg.split("\n")).toEqual([
-      "Hi Priya, here are your Bahi login details:",
+      "Hi Priya, here are your Settle login details:",
       "Email: p@x.in",
       "Temporary password: T3mp!pass",
       "You'll be asked to choose your own password when you sign in.",

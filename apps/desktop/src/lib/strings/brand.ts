@@ -1,6 +1,6 @@
 // Product identity - the ONE place the app's name lives in the UI.
-// "Bahi" is the traditional bound ledger (bahi-khata) Indian traders keep.
-export const APP_NAME = "Bahi";
+// "Settle": the job is settling dues - bills go out, payments come in.
+export const APP_NAME = "Settle";
 export const APP_TAGLINE = "GST billing for every business you run";
 
 /**
@@ -52,7 +52,7 @@ export function pickLoginPhrase(
   return LOGIN_PHRASES[i]!;
 }
 
-const LAST_PHRASE_KEY = "bahi.lastLoginPhrase";
+const LAST_PHRASE_KEY = "settle.lastLoginPhrase";
 
 function safeLocalStorage(): Storage | null {
   try {

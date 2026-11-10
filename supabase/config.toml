@@ -145,12 +145,13 @@ max_indexes = 5
 enabled = true
 # The base URL of your website. Used as an allow-list for redirects and for constructing URLs used
 # in emails.
-# Bahi is a desktop app: email links land on its registered bahi:// scheme
+# Settle is a desktop app: email links land on its registered settle:// scheme
 # (see packages/api/src/email-auth.ts). Even emails sent without an explicit
 # redirect (e.g. "Send password recovery" in the dashboard) open the app.
-site_url = "bahi://auth/callback"
+site_url = "settle://auth/callback"
 # A list of *exact* URLs that auth providers are permitted to redirect to post authentication.
-additional_redirect_urls = ["bahi://auth/callback"]
+# bahi:// stays while Bahi 0.3 installs (the pre-rename app) are still around.
+additional_redirect_urls = ["settle://auth/callback", "bahi://auth/callback"]
 # How long tokens are valid for, in seconds. Defaults to 3600 (1 hour), maximum 604,800 (1 week).
 jwt_expiry = 3600
 # JWT issuer URL. If not set, defaults to the local API URL (http://127.0.0.1:<port>/auth/v1).
@@ -230,15 +231,15 @@ otp_expiry = 3600
 # sender_name = "Admin"
 
 # Sign-in and password-reset emails carry a code ({{ .Token }}) AND an app
-# link ({{ .ConfirmationURL }} verifies, then redirects to bahi://auth/callback).
+# link ({{ .ConfirmationURL }} verifies, then redirects to settle://auth/callback).
 # Requires custom SMTP on the hosted project (Resend, set in the dashboard):
 # the free plan rejects template changes on Supabase's built-in sender.
 [auth.email.template.magic_link]
-subject = "Your Bahi sign-in code"
+subject = "Your Settle sign-in code"
 content_path = "./supabase/templates/magic_link.html"
 
 [auth.email.template.recovery]
-subject = "Reset your Bahi password"
+subject = "Reset your Settle password"
 content_path = "./supabase/templates/recovery.html"
 
 # Uncomment to customize email template

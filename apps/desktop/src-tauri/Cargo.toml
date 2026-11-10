@@ -6,9 +6,9 @@
 
 [package]
 name = "billing-desktop"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
-description = "Bahi - GST billing desktop shell (Tauri 2)"
+description = "Settle - GST billing desktop shell (Tauri 2)"
 
 [lib]
 name = "billing_desktop_lib"
@@ -28,5 +28,5 @@ tauri-plugin-window-state = "2"
 tauri-plugin-store = "2"
 # Single instance guard (A12): second launch focuses the existing window.
 tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
-# bahi:// scheme for email sign-in and password-reset links.
+# settle:// scheme for email sign-in and password-reset links.
 tauri-plugin-deep-link = "2"
